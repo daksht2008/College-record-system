@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav>
+        <h1>EduSync</h1>
+        <div class="nav-links">
+            <a href="dashboard.html" class="active">Dashboard</a>
+            <a href="files.html">Files</a>
+            <button onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="margin-bottom: 2rem;">
+            <h2>Welcome, <span id="studentName">Student</span>!</h2>
+            <p style="color: var(--text-muted)">Enrollment No: <span id="studentEnrollment"></span></p>
+        </div>
+
+        <div class="glass-card" style="margin-bottom: 2rem;">
+            <h3>Student Profile</h3>
+            <div id="profileDetails" style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1rem;">
+                <p style="color: var(--text-muted)">Loading profile...</p>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="glass-card stat-card">
+                <h3>Overall Attendance</h3>
+                <div class="value" id="attendancePercent">--%</div>
+            </div>
+
+            <div class="glass-card">
+                <h3>Marks Overview</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Marks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="marksTableBody">
+                            <tr><td colspan="2">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="glass-card" style="grid-column: 1 / -1;">
+                <h3>Recent Attendance Records</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Division</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceTableBody">
+                            <tr><td colspan="3">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Check auth and load data
+        window.onload = () => {
+            checkAuth('student');
+            loadStudentDashboard();
+        };
+    </script>
+</body>
+</html>

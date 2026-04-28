@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav>
+        <h1>EduSync Admin</h1>
+        <div class="nav-links">
+            <span id="liveClock" style="font-family: monospace; font-size: 0.95rem; color: #6ee7b7; margin-right: 1.5rem;"></span>
+            <button onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="margin-bottom: 2rem;">
+            <h2>Admin Control Panel</h2>
+        </div>
+
+        <div class="dashboard-grid">
+            
+            <!-- Bulk Registration -->
+            <div class="glass-card">
+                <h3>Bulk Student Registration</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Enter the starting and ending enrollment numbers to generate them instantly.</p>
+                <div id="regAlert" class="alert"></div>
+                <form id="bulkRegForm">
+                    <div class="form-group">
+                        <label>Academic Year</label>
+                        <input type="text" id="regYear" class="form-control" placeholder="e.g. 2025-26" required>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Starting Number</label>
+                            <input type="number" id="startEnrollment" class="form-control" placeholder="1001" required>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Ending Number</label>
+                            <input type="number" id="endEnrollment" class="form-control" placeholder="1050" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Division</label>
+                        <input type="text" id="regDivision" class="form-control" placeholder="e.g. A" maxlength="2" required>
+                    </div>
+                    <button type="submit" class="btn">Register Students</button>
+                </form>
+                
+                <div id="regResults" class="table-wrapper" style="display:none; margin-top: 1rem; max-height: 200px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>Enrollment</th><th>Password</th><th>Status</th></tr>
+                        </thead>
+                        <tbody id="regResultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Sync Muster File -->
+            <div class="glass-card">
+                <h3>Sync & Organize Muster Data</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Upload list. Will be saved in the specified folder.</p>
+                <div id="musterAlert" class="alert"></div>
+                <form id="musterForm">
+                    <div class="form-group">
+                        <label>Academic Year / Folder Name</label>
+                        <input type="text" id="uploadFolder" class="form-control" placeholder="E.g., 2025-26" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Select Muster File</label>
+                        <input type="file" id="musterFile" class="form-control" accept=".xlsx,.xls,.csv,.pdf" required style="padding: 0.6rem;">
+                    </div>
+                    <button type="submit" class="btn">Process & Save</button>
+                </form>
+            </div>
+
+            <!-- Material Upload -->
+            <div class="glass-card">
+                <h3>Upload Material</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Upload files or add links. Organize with folders and subfolders.</p>
+                <div id="uploadAlert" class="alert"></div>
+                
+                <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                    <button id="tabFileBtn" class="btn" style="flex: 1;" onclick="setUploadTab('file')">Upload File</button>
+                    <button id="tabLinkBtn" class="btn" style="flex: 1; background: transparent; border: 1px solid var(--primary);" onclick="setUploadTab('link')">Add Link</button>
+                </div>
+
+                <form id="materialForm">
+                    <input type="hidden" id="uploadType" value="file">
+                    
+                    <div class="form-group">
+                        <label>Folder Path</label>
+                        <div id="folderBreadcrumb" style="display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; min-height: 2rem; font-size: 0.9rem;">
+                            <span style="color: #6ee7b7; cursor: pointer;" onclick="resetFolderPath()">📁 Root</span>
+                        </div>
+                        <input type="hidden" id="materialFolderPath" value="">
+                        <div style="display: flex; gap: 0.5rem;">
+                            <select id="materialFolder" class="form-control" style="flex: 1;" onchange="navigateToFolder()">
+                                <option value="">-- Pick a folder --</option>
+                                <option value="Physics">Physics</option>
+                                <option value="Maths">Maths</option>
+                            </select>
+                            <button type="button" class="btn" style="width: auto; padding: 0 1rem;" onclick="createNewFolder()" title="Create new folder">+</button>
+                            <button type="button" class="btn" style="width: auto; padding: 0 0.8rem; background: transparent; border: 1px solid rgba(255,255,255,0.2);" onclick="addSubfolder()" title="Add subfolder inside current">📂+</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Visibility</label>
+                        <select id="materialVisibility" class="form-control">
+                            <option value="public">Public (All Students)</option>
+                            <option value="private">Private (Admin Only)</option>
+                        </select>
+                    </div>
+                    
+                    <div id="fileSection" class="form-group">
+                        <label>Select File</label>
+                        <input type="file" id="materialFile" class="form-control" style="padding: 0.5rem;">
+                    </div>
+                    
+                    <div id="linkSection" class="form-group" style="display: none;">
+                        <label>Paste Link URL</label>
+                        <input type="url" id="materialLink" class="form-control" placeholder="https://youtube.com/...">
+                    </div>
+                    
+                    <button type="submit" class="btn">Add Material</button>
+                </form>
+            </div>
+
+
+            <!-- Student Directory — Unified Folder Tree -->
+            <div class="glass-card" style="grid-column: 1 / -1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div>
+                        <h3>📚 Student Directory</h3>
+                        <p style="font-size: 0.9rem; color: var(--text-muted);">Browse by Academic Year → Division. Click to expand.</p>
+                    </div>
+                </div>
+                <div id="mainDirectory">
+                    <p>Loading students...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Modal (Side Panel) -->
+    <div id="studentModal" class="modal" style="display: none; position: fixed; top: 0; right: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: flex-end;">
+        <div class="glass-card" style="width: 90%; max-width: 400px; height: 100%; margin: 0; border-radius: 0; position: relative; animation: slideIn 0.3s forwards; overflow-y: auto;">
+            <button onclick="document.getElementById('studentModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; color: white; font-size: 1.5rem; border: none; cursor: pointer;">&times;</button>
+            
+            <h3 id="modalStudentName" style="margin-bottom: 0.2rem; margin-top: 1rem;">Student Name</h3>
+            <p id="modalEnrollment" style="color: var(--text-muted); margin-bottom: 1.5rem;">Enrollment</p>
+            
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.5rem; color: #6ee7b7;">Attendance</h4>
+                <p>Overall: <strong id="modalAttendance">Loading...</strong></p>
+            </div>
+            
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h4 style="margin-bottom: 0.5rem; color: #60a5fa;">Academic Marks</h4>
+                <div id="modalMarksList">Loading...</div>
+            </div>
+            
+            <h4 style="margin-bottom: 0.5rem; color: #fbbf24;">Update Marks</h4>
+            <div id="modalMarksAlert" class="alert"></div>
+            <form id="modalMarksForm">
+                <input type="hidden" id="modalMarksEnrollment">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label>Section</label>
+                    <select id="modalMarksSubject" class="form-control">
+                        <option value="Midsem">Midsem</option>
+                        <option value="Lab Practical">Lab Practical</option>
+                        <option value="Viva">Viva</option>
+                        <option value="Project">Project</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label>Marks</label>
+                    <input type="text" id="modalMarksValue" class="form-control" required placeholder="E.g. 25 or AB">
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Save Marks</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Division Marks Modal -->
+    <div id="divMarksModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+        <div class="glass-card" style="width: 95%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; position: relative;">
+            <button onclick="document.getElementById('divMarksModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; color: white; font-size: 1.5rem; border: none; cursor: pointer;">&times;</button>
+            <h3 id="divMarksTitle" style="margin-bottom: 1rem;">Division Marks</h3>
+            
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <select id="divMarksSubject" class="form-control" style="width: 200px;" onchange="loadDivisionMarksTable()">
+                    <option value="Midsem">Midsem</option>
+                    <option value="Lab Practical">Lab Practical</option>
+                    <option value="Viva">Viva</option>
+                    <option value="Project">Project</option>
+                </select>
+                <button onclick="saveDivisionMarks()" class="btn" style="width: auto;">Save All Marks</button>
+                <span id="divMarksAlert" style="align-self: center; font-size: 0.9rem;"></span>
+            </div>
+            
+            <div style="flex: 1; overflow: auto; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                    <thead id="divMarksThead" style="background: rgba(255,255,255,0.1); position: sticky; top: 0;">
+                    </thead>
+                    <tbody id="divMarksTbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+    </style>
+
+    <script src="app.js"></script>
+    <script>
+        window.onload = () => {
+            checkAuth('admin');
+            setupAdminListeners();
+            loadMainDirectory();
+            startClock();
+            autoFillYear();
+        };
+    </script>
+</body>
+</html>
