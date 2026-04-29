@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS admins (
     password VARCHAR(255) NOT NULL
 );
 
--- Insert a default admin for testing
-INSERT IGNORE INTO admins (name, username, password) VALUES ('Admin User', 'admin', 'admin123');
+-- Insert default admins for testing
+INSERT IGNORE INTO admins (name, username, password) VALUES ('Admin User', 'admin', 'admin123'), ('Assistant Admin', 'admin2', 'admin456');
 
 CREATE TABLE IF NOT EXISTS students (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS students (
     enrollment_no VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     division VARCHAR(10) DEFAULT 'A',
-    rank_no VARCHAR(50)
+    rank_no VARCHAR(50),
+    extra_info TEXT DEFAULT NULL,
+    archived_year VARCHAR(50) DEFAULT NULL,
+    status ENUM('active', 'archived') DEFAULT 'active'
 );
 
 CREATE TABLE IF NOT EXISTS attendance (

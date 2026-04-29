@@ -1,21 +1,127 @@
-const API_BASE = 'http://localhost:3000/api';
+const APP_ORIGIN = (window.location.protocol === 'file:' || window.location.origin === 'null')
+    ? 'http://localhost:3000'
+    : window.location.origin;
+const API_BASE = APP_ORIGIN + '/api';
+const SESSION_KEY = 'eduSyncSession';
+const PERSIST_KEY = 'eduSyncRemember';
 
-// --- AUTHENTICATION ---
+function normalizeFileUrl(url) {
+    if (!url) return '#';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    if (url.startsWith('//')) {
+        return window.location.protocol + url;
+    }
+    if (!url.startsWith('/')) {
+        return APP_ORIGIN + '/' + url;
+    }
+    return APP_ORIGIN + url;
+}
+
+window.showAppModal = function(title, message, type = 'alert', callback = null) {
+    let overlay = document.getElementById('appModalOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'appModalOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:none;justify-content:center;align-items:center;backdrop-filter:blur(5px);';
+        document.body.appendChild(overlay);
+    }
+    
+    let inputHtml = type === 'prompt' ? `<input type="text" id="appModalInput" class="form-control" style="margin-top:1rem;margin-bottom:1rem;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;width:100%;padding:0.8rem;border-radius:8px;" autofocus autocomplete="off">` : '';
+    
+    overlay.innerHTML = `
+        <div class="glass-card" style="width:90%;max-width:400px;background:#171717;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:1.5rem;box-shadow:0 10px 25px rgba(0,0,0,0.5);animation:slideIn 0.2s;">
+            <h3 style="margin-bottom:0.5rem;color:white;font-size:1.2rem;">${title}</h3>
+            <p style="color:#a1a1aa;font-size:0.95rem;white-space:pre-wrap;line-height:1.4;">${message}</p>
+            ${inputHtml}
+            <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
+                ${type === 'prompt' ? `<button class="btn" id="appModalCancelBtn" style="background:transparent;border:1px solid #52525b;color:#a1a1aa;width:auto;padding:0.5rem 1rem;">Cancel</button>` : ''}
+                <button class="btn" id="appModalOkBtn" style="width:auto;padding:0.5rem 1.5rem;background:#10b981;">OK</button>
+            </div>
+        </div>
+    `;
+    
+    overlay.style.display = 'flex';
+    
+    const close = (val) => {
+        overlay.style.display = 'none';
+        if (callback) callback(val);
+    };
+    
+    document.getElementById('appModalOkBtn').onclick = () => {
+        const val = type === 'prompt' ? document.getElementById('appModalInput').value.trim() : true;
+        close(val);
+    };
+    
+    if (type === 'prompt') {
+        const inp = document.getElementById('appModalInput');
+        setTimeout(() => inp.focus(), 100);
+        inp.onkeyup = (e) => { if (e.key === 'Enter') document.getElementById('appModalOkBtn').click(); };
+        document.getElementById('appModalCancelBtn').onclick = () => close(null);
+    }
+};
+
+
+function getSavedUser() {
+    const sessionData = window.sessionStorage.getItem(SESSION_KEY);
+    if (sessionData) {
+        try {
+            const parsed = JSON.parse(sessionData);
+            if (parsed.expires > Date.now()) return parsed.user;
+            window.sessionStorage.removeItem(SESSION_KEY);
+        } catch (e) {
+            window.sessionStorage.removeItem(SESSION_KEY);
+        }
+    }
+
+    const rememberData = window.localStorage.getItem(PERSIST_KEY);
+    if (rememberData) {
+        try {
+            const parsed = JSON.parse(rememberData);
+            if (parsed.expires > Date.now()) return parsed.user;
+            window.localStorage.removeItem(PERSIST_KEY);
+        } catch (e) {
+            window.localStorage.removeItem(PERSIST_KEY);
+        }
+    }
+
+    return null;
+}
+
+function saveUserSession(user, remember) {
+    const expires = Date.now() + (remember ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000);
+    const payload = JSON.stringify({ user, expires });
+    if (remember) {
+        window.localStorage.setItem(PERSIST_KEY, payload);
+        window.sessionStorage.removeItem(SESSION_KEY);
+    } else {
+        window.sessionStorage.setItem(SESSION_KEY, payload);
+        window.localStorage.removeItem(PERSIST_KEY);
+    }
+}
+
+function clearUserSession() {
+    window.localStorage.removeItem(PERSIST_KEY);
+    window.sessionStorage.removeItem(SESSION_KEY);
+}
+
 function checkAuth(requiredRole) {
-    const user = JSON.parse(localStorage.getItem('user'));
+    const user = getSavedUser();
     if (!user) {
         window.location.href = 'index.html';
         return;
     }
-    if (user.role === 'admin') return;
     if (requiredRole && user.role !== requiredRole) {
-        alert('Unauthorized access');
-        window.location.href = 'index.html';
+        showAppModal('Access Denied', 'Unauthorized access', 'alert', () => {
+            window.location.href = 'index.html';
+        });
+        return;
     }
 }
 
 function logout() {
-    localStorage.removeItem('user');
+    clearUserSession();
     window.location.href = 'index.html';
 }
 
@@ -69,7 +175,8 @@ if (window.location.pathname.endsWith('index.html') || window.location.pathname.
                 if (data.success) {
                     const role = data.role;
                     const userData = { ...data.user, role };
-                    localStorage.setItem('user', JSON.stringify(userData));
+                    const remember = document.getElementById('loginRememberMe')?.checked;
+                    saveUserSession(userData, !!remember);
                     window.location.href = role === 'admin' ? 'admin.html' : 'dashboard.html';
                 } else {
                     alertBox.style.display = 'block';
@@ -88,10 +195,80 @@ if (window.location.pathname.endsWith('index.html') || window.location.pathname.
     }
 }
 
+let deferredInstallPrompt = null;
+function isIos() {
+    const ua = navigator.userAgent.toLowerCase();
+    return /iphone|ipad|ipod/.test(ua);
+}
+
+function isAndroid() {
+    return /android/.test(navigator.userAgent.toLowerCase());
+}
+
+function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function setupInstallPrompt() {
+    if (isStandalone()) return;
+
+    const installContainer = document.getElementById('installContainer');
+    const installBtn = document.getElementById('installAppBtn');
+    const installText = document.getElementById('installPromptText');
+    if (!installContainer || !installBtn || !installText) return;
+
+    const showInstallBanner = (message, showButton = true) => {
+        installText.innerText = message;
+        installBtn.style.display = showButton ? 'inline-flex' : 'none';
+        installContainer.style.display = 'block';
+    };
+
+    const defaultMessage = isIos()
+        ? 'Open Safari, tap Share, then choose Add to Home Screen to install EduSync.'
+        : 'Open your browser menu and choose Add to Home screen to install EduSync.';
+
+    showInstallBanner(defaultMessage, !isIos());
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        const promptText = isAndroid()
+            ? 'Tap Install to add EduSync to your home screen.'
+            : 'Install EduSync on your device for faster access.';
+        showInstallBanner(promptText, true);
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            const choice = await deferredInstallPrompt.userChoice;
+            deferredInstallPrompt = null;
+            installBtn.style.display = 'none';
+            installText.innerText = choice.outcome === 'accepted'
+                ? 'Installed! You can now open EduSync from your home screen.'
+                : 'You can install EduSync anytime from your browser menu.';
+            console.log('PWA install choice:', choice.outcome);
+            return;
+        }
+
+        if (isIos()) {
+            showInstallBanner('In Safari, tap Share and choose Add to Home Screen.', false);
+            return;
+        }
+
+        showInstallBanner('Use your browser menu and select Add to Home screen.', false);
+    });
+
+    window.addEventListener('appinstalled', () => {
+        installText.innerText = 'EduSync was added to your home screen.';
+        installBtn.style.display = 'none';
+    });
+}
+
 
 // --- STUDENT DASHBOARD LOGIC ---
 async function loadStudentDashboard() {
-    let user = JSON.parse(localStorage.getItem('user'));
+    let user = getSavedUser();
     
     const urlParams = new URLSearchParams(window.location.search);
     const targetEnrollment = urlParams.get('enrollment');
@@ -188,13 +365,50 @@ async function loadStudentFiles() {
                             <strong>${f.file_name}</strong><br>
                             <small style="color:var(--text-muted)">Folder: ${f.folder_name}</small>
                         </div>
-                        <a href="http://localhost:3000${f.file_url}" target="_blank" class="download-btn">Download</a>
+                        <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn">Download</a>
                     </div>
                 `).join('');
             }
         }
     } catch (e) {
         console.error(e);
+    }
+}
+
+// --- ADMIN FILES ---
+async function loadAdminFiles() {
+    try {
+        const res = await fetch(`${API_BASE}/admin/getFiles`);
+        const data = await res.json();
+        const container = document.getElementById('adminFilesContainer');
+
+        if (!container) return;
+        if (!data.success) {
+            container.innerHTML = '<p style="color:var(--text-muted)">Unable to load files.</p>';
+            return;
+        }
+
+        if (data.files.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted)">No uploaded materials found yet.</p>';
+            return;
+        }
+
+        container.innerHTML = data.files.map(f => `
+            <div class="file-item">
+                <div>
+                    <strong>${f.file_name}</strong><br>
+                    <small style="color:var(--text-muted)">Folder: ${f.folder_name} • ${f.visibility}</small><br>
+                    <small style="color:var(--text-muted)">Uploaded by: ${f.uploaded_by || 'admin'}</small>
+                </div>
+                <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn">Download</a>
+            </div>
+        `).join('');
+    } catch (err) {
+        const container = document.getElementById('adminFilesContainer');
+        if (container) {
+            container.innerHTML = '<p class="alert error">Failed to load uploaded files.</p>';
+        }
+        console.error(err);
     }
 }
 
@@ -312,8 +526,10 @@ function setupAdminListeners() {
             formData.append('visibility', document.getElementById('visibility').value);
             formData.append('file', document.getElementById('fileInput').files[0]);
             
-            const user = JSON.parse(localStorage.getItem('user'));
-            formData.append('uploaded_by', user.username);
+            const user = getSavedUser();
+            if (user) {
+                formData.append('uploaded_by', user.username || user.enrollment_no);
+            }
 
             try {
                 const res = await fetch(`${API_BASE}/admin/uploadFile`, {
@@ -391,7 +607,10 @@ async function loadMainDirectory() {
                                   style="font-weight: 600; cursor: pointer; flex: 1;">
                                 📂 Division ${div} <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">${students.length} Students</span>
                             </span>
-                            <button onclick="openDivisionMarks('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: #6366f1;">Enter Marks</button>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button onclick="openDivisionMarks('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: #6366f1;">Enter Marks</button>
+                                <button onclick="openDivisionAttendance('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: #10b981;">Attendance</button>
+                            </div>
                         </div>
                         <div id="${divId}" style="display: none; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.5rem; padding: 0.7rem 1rem;">`;
                     
@@ -469,6 +688,191 @@ function autoFillYear() {
     const ay = getAcademicYear();
     if (regYear && !regYear.value) regYear.value = ay;
     if (uploadFolder && !uploadFolder.value) uploadFolder.value = ay;
+}
+
+function setDefaultDate() {
+    const dateInput = document.getElementById('attendanceDate');
+    if (dateInput) {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        dateInput.value = `${year}-${month}-${day}`;
+    }
+}
+
+// --- ATTENDANCE MARKING SYSTEM ---
+let currentAttendanceStudents = [];
+let currentAttendanceStatus = {};
+let currentAttendanceDivision = '';
+
+function openDivisionAttendance(division) {
+    currentAttendanceDivision = division;
+    document.getElementById('attendanceModalTitle').innerText = `Attendance - Division ${division}`;
+    document.getElementById('attendanceDateInput').value = new Date().toISOString().split('T')[0];
+    document.getElementById('attendanceDivisionInput').value = division;
+    document.getElementById('attendanceStartTime').value = '10:30';
+    document.getElementById('attendanceEndTime').value = '11:30';
+    document.getElementById('attendanceCustomStart').value = '';
+    document.getElementById('attendanceCustomEnd').value = '';
+    document.getElementById('attendanceOnceAlert').style.display = 'none';
+    document.getElementById('attendanceModal').style.display = 'flex';
+    loadAttendanceList(division);
+}
+
+async function loadAttendanceList(division) {
+    try {
+        const res = await fetch(`${API_BASE}/admin/getAllStudents`);
+        const data = await res.json();
+        const tbody = document.getElementById('attendanceListBody');
+        const alertBox = document.getElementById('attendanceOnceAlert');
+
+        if (!data.success) {
+            throw new Error('Failed to load students');
+        }
+
+        currentAttendanceStudents = data.students.filter(s => (s.division || 'A') === division);
+        currentAttendanceStatus = {};
+
+        if (currentAttendanceStudents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3">No students found for this division.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = currentAttendanceStudents.map(s => {
+            currentAttendanceStatus[s.enrollment_no] = false;
+            return `
+                <tr>
+                    <td style="padding: 0.7rem;">${s.display_enrollment || s.enrollment_no}</td>
+                    <td style="padding: 0.7rem;">${s.name || 'N/A'}</td>
+                    <td style="padding: 0.7rem; text-align: right;">
+                        <label class="switch">
+                            <input type="checkbox" data-enrollment="${s.enrollment_no}">
+                            <span class="slider round"></span>
+                        </label>
+                    </td>
+                </tr>`;
+        }).join('');
+
+        document.querySelectorAll('#attendanceListBody input[type="checkbox"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const enrollment = e.target.getAttribute('data-enrollment');
+                currentAttendanceStatus[enrollment] = e.target.checked;
+            });
+        });
+
+        alertBox.style.display = 'none';
+    } catch (err) {
+        const alertBox = document.getElementById('attendanceOnceAlert');
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert error';
+        alertBox.innerText = err.message || 'Failed to load attendance list';
+        console.error(err);
+    }
+}
+
+function closeAttendanceModal() {
+    document.getElementById('attendanceModal').style.display = 'none';
+}
+
+function getAttendanceTime() {
+    const start = document.getElementById('attendanceCustomStart').value.trim() || document.getElementById('attendanceStartTime').value;
+    const end = document.getElementById('attendanceCustomEnd').value.trim() || document.getElementById('attendanceEndTime').value;
+    return { start, end };
+}
+
+function setAttendanceAll(present) {
+    document.querySelectorAll('#attendanceListBody input[type="checkbox"]').forEach(input => {
+        input.checked = present;
+        const enrollment = input.getAttribute('data-enrollment');
+        currentAttendanceStatus[enrollment] = present;
+    });
+}
+
+async function saveDivisionAttendance() {
+    const alertBox = document.getElementById('attendanceOnceAlert');
+    const date = document.getElementById('attendanceDateInput').value;
+    const { start, end } = getAttendanceTime();
+
+    if (!date || !start || !end) {
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert error';
+        alertBox.innerText = 'Please select date, start time and end time.';
+        return;
+    }
+
+    const attendanceRecords = Object.entries(currentAttendanceStatus).map(([enrollment_no, present]) => ({
+        enrollment_no,
+        date,
+        status: present ? 'Present' : 'Absent',
+        division: currentAttendanceDivision,
+        session_start: start,
+        session_end: end
+    }));
+
+    try {
+        const response = await fetch(`${API_BASE}/admin/syncAttendance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attendanceRecords })
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to save attendance');
+        }
+
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert success';
+        alertBox.innerText = `Saved ${attendanceRecords.length} attendance records for division ${currentAttendanceDivision}.`;
+        setTimeout(closeAttendanceModal, 1200);
+    } catch (err) {
+        console.error(err);
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert error';
+        alertBox.innerText = err.message || 'Attendance save failed';
+    }
+}
+
+// Manual Sync Trigger
+async function manualSync() {
+    const syncBtn = document.getElementById('syncBtn');
+    if (!syncBtn) return;
+
+    if (!navigator.onLine) {
+        showAppModal('Offline', 'You are offline. Will sync when connection is restored.', 'alert');
+        return;
+    }
+
+    syncBtn.disabled = true;
+    syncBtn.innerText = '⏳ Syncing...';
+    syncBtn.style.opacity = '0.6';
+
+    try {
+        if (offlineSyncManager) {
+            const results = await offlineSyncManager.syncAll();
+            const att = results && results.attendance ? results.attendance : { synced: 0, failed: 0 };
+            const mrk = results && results.marks ? results.marks : { synced: 0, failed: 0 };
+            const total = (att.synced || 0) + (mrk.synced || 0);
+            
+            syncBtn.innerText = total > 0 ? '✅ Synced!' : '🔄 Sync';
+            setTimeout(() => {
+                syncBtn.innerText = '🔄 Sync';
+                syncBtn.disabled = false;
+                syncBtn.style.opacity = '1';
+            }, 2000);
+
+            showAppModal('Sync Complete', `Attendance: ${att.synced} synced, ${att.failed} failed\nMarks: ${mrk.synced} synced, ${mrk.failed} failed`, 'alert');
+        }
+    } catch (err) {
+        syncBtn.innerText = '❌ Sync Failed';
+        setTimeout(() => {
+            syncBtn.innerText = '🔄 Sync';
+            syncBtn.disabled = false;
+            syncBtn.style.opacity = '1';
+        }, 3000);
+        showAppModal('Sync Failed', err.message, 'alert');
+    }
 }
 
 
@@ -590,13 +994,13 @@ window.openDivisionMarks = async function(div) {
     document.getElementById('divMarksAlert').innerText = '';
     
     try {
-        const res = await fetch(`${API_BASE}/admin/getStudents`);
+        const res = await fetch(`${API_BASE}/admin/getAllStudents`);
         const data = await res.json();
         currentDivStudents = data.students.filter(s => (s.division || 'A') === div);
         
         loadDivisionMarksTable();
     } catch(e) {
-        alert("Failed to load division");
+        showAppModal('Error', 'Failed to load division', 'alert');
     }
 }
 
@@ -860,33 +1264,35 @@ window.navigateToFolder = function() {
 }
 
 window.createNewFolder = function() {
-    const fn = prompt("Enter new folder name:");
-    if (fn) {
-        const sel = document.getElementById('materialFolder');
-        // Check if already exists
-        const exists = Array.from(sel.options).some(o => o.value === fn);
-        if (!exists) {
-            const opt = document.createElement('option');
-            opt.value = fn;
-            opt.text = fn;
-            sel.add(opt);
+    showAppModal('New Folder', 'Enter new folder name:', 'prompt', (fn) => {
+        if (fn) {
+            const sel = document.getElementById('materialFolder');
+            // Check if already exists
+            const exists = Array.from(sel.options).some(o => o.value === fn);
+            if (!exists) {
+                const opt = document.createElement('option');
+                opt.value = fn;
+                opt.text = fn;
+                sel.add(opt);
+            }
+            currentFolderPath = [fn];
+            updateBreadcrumb();
+            sel.value = '';
         }
-        currentFolderPath = [fn];
-        updateBreadcrumb();
-        sel.value = '';
-    }
+    });
 }
 
 window.addSubfolder = function() {
     if (currentFolderPath.length === 0) {
-        alert('Pick or create a parent folder first.');
+        showAppModal('Error', 'Pick or create a parent folder first.', 'alert');
         return;
     }
-    const sub = prompt(`Create subfolder inside "${currentFolderPath.join('/')}":`);
-    if (sub) {
-        currentFolderPath.push(sub);
-        updateBreadcrumb();
-    }
+    showAppModal('New Subfolder', `Create subfolder inside "${currentFolderPath.join('/')}":`, 'prompt', (sub) => {
+        if (sub) {
+            currentFolderPath.push(sub);
+            updateBreadcrumb();
+        }
+    });
 }
 
 const materialForm = document.getElementById('materialForm');
@@ -902,15 +1308,15 @@ if(materialForm) {
         const type = document.getElementById('uploadType').value;
         if (type === 'file') {
             const f = document.getElementById('materialFile').files[0];
-            if(!f) return alert('Please select a file');
+            if(!f) return showAppModal('Missing File', 'Please select a file to upload.', 'alert');
             formData.append('file', f);
         } else {
             const l = document.getElementById('materialLink').value;
-            if(!l) return alert('Please enter a link');
+            if(!l) return showAppModal('Missing Link', 'Please enter a valid link URL.', 'alert');
             formData.append('link_url', l);
         }
         
-        const user = JSON.parse(localStorage.getItem('user'));
+        const user = getSavedUser();
         if(user) formData.append('uploaded_by', user.username || user.enrollment_no);
         
         try {
@@ -925,6 +1331,7 @@ if(materialForm) {
                 alertBox.className = 'alert success';
                 alertBox.innerText = 'Material added!';
                 materialForm.reset();
+                if (typeof loadAdminFiles === 'function') loadAdminFiles();
             } else {
                 alertBox.className = 'alert error';
                 alertBox.innerText = data.message || 'Failed to upload';

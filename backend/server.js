@@ -10,6 +10,7 @@ const port = 3000;
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, '..', 'web')));
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -25,6 +26,11 @@ const studentRoutes = require('./routes/student');
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
+
+// Fallback for browser routing
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'web', 'index.html'));
+});
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);

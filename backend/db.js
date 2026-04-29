@@ -9,13 +9,39 @@ const db = mysql.createConnection({
     database: 'college_records'
 });
 
-db.connect((err) => {
+db.connect(async (err) => {
     if (err) {
         console.error('Error connecting to MySQL database: ', err.message);
         console.error('Please make sure MySQL is running, the password is correct, and the schema is imported.');
         return;
     }
     console.log('Successfully connected to MySQL database.');
+
+    try {
+        const columnsToAdd = [
+            "ADD COLUMN extra_info TEXT DEFAULT NULL",
+            "ADD COLUMN archived_year VARCHAR(50) DEFAULT NULL",
+            "ADD COLUMN status ENUM('active', 'archived') DEFAULT 'active'"
+        ];
+
+        for (const col of columnsToAdd) {
+            try {
+                await db.promise().execute(`ALTER TABLE students ${col}`);
+            } catch (e) {
+                if (e.code !== 'ER_DUP_FIELDNAME') {
+                    console.error(`Error adding column ${col}:`, e.message);
+                }
+            }
+        }
+        console.log('Verified students table schema.');
+        await db.promise().execute(
+            'INSERT IGNORE INTO admins (name, username, password) VALUES (?, ?, ?), (?, ?, ?)',
+            ['Admin User', 'admin', 'admin123', 'Assistant Admin', 'admin2', 'admin456']
+        );
+        console.log('Ensured default admin accounts exist.');
+    } catch (schemaErr) {
+        console.error('Error ensuring students schema:', schemaErr.message);
+    }
 });
 
 // To use promises

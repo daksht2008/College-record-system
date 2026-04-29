@@ -1,13 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --primary: #6366f1; /* Indigo */
-  --primary-hover: #4f46e5;
-  --bg-gradient: linear-gradient(135deg, #0f172a, #1e1b4b);
+  --primary: #10b981; /* Emerald */
+  --primary-hover: #059669;
+  --bg-gradient: linear-gradient(135deg, #171717, #064e3b);
   --glass-bg: rgba(255, 255, 255, 0.05);
   --glass-border: rgba(255, 255, 255, 0.1);
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
+  --text-muted: #a1a1aa;
   --danger: #ef4444;
   --success: #10b981;
   --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
@@ -42,7 +42,7 @@ nav {
 nav h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  background: linear-gradient(to right, #818cf8, #c084fc);
+  background: linear-gradient(to right, #34d399, #fcd34d);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -141,7 +141,7 @@ nav button:hover {
 .form-control:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 select.form-control {
@@ -150,7 +150,7 @@ select.form-control {
 }
 
 select.form-control option {
-  background: #1e1b4b;
+  background: #064e3b;
   color: white;
 }
 
@@ -176,7 +176,7 @@ textarea.form-control {
 .btn:hover {
   background: var(--primary-hover);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
 }
 
 /* Dashboard Grid */
@@ -199,7 +199,7 @@ textarea.form-control {
 .stat-card .value {
   font-size: 3rem;
   font-weight: 700;
-  background: linear-gradient(to right, #4ade80, #3b82f6);
+  background: linear-gradient(to right, #10b981, #fcd34d);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -287,4 +287,58 @@ table tr:last-child td {
 .download-btn:hover {
   background: var(--primary);
   color: white;
+}
+
+/* Attendance toggle switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255,255,255,0.15);
+  transition: 0.4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #10b981;
+}
+
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }

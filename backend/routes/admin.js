@@ -440,6 +440,17 @@ router.post('/uploadFile', upload.single('file'), async (req, res) => {
     }
 });
 
+// GET /getFiles
+router.get('/getFiles', async (req, res) => {
+    try {
+        const [files] = await db.execute('SELECT * FROM files ORDER BY id DESC');
+        res.json({ success: true, files });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // POST /archiveDivision
 router.post('/archiveDivision', async (req, res) => {
     try {
