@@ -6,6 +6,7 @@ const path = require('path');
 const xlsx = require('xlsx');
 const pdfParse = require('pdf-parse');
 const fs = require('fs');
+const { sendEmail } = require('../mailer');
 
 // Configure Multer for File Uploads
 const storage = multer.diskStorage({
@@ -433,7 +434,95 @@ router.post('/uploadFile', upload.single('file'), async (req, res) => {
             [file_name, file_url, folder_name || 'root', visibility || 'public', uploaded_by || 'admin']
         );
 
+        if (visibility === 'public' || !visibility) {
+            const [students] = await db.execute("SELECT name, extra_info FROM students WHERE status = 'active'");
+            const emails = students
+                .map(s => {
+                    try {
+                        const extra = typeof s.extra_info === 'string' ? JSON.parse(s.extra_info || '{}') : (s.extra_info || {});
+                        return extra['Email'] || extra['email'] || extra['Email ID'] || extra['EMAIL'];
+                    } catch(e) { return null; }
+                })
+                .filter(e => e); // Remove null/undefined
+            
+            if (emails.length > 0) {
+                const subject = `New Study Material Uploaded: ${file_name}`;
+                const text = `Hello Student,\n\nA new file/link "${file_name}" has been uploaded to the "${folder_name || 'root'}" folder in EduSync.\n\nPlease log in to the portal to view or download it.\n\nRegards,\nEduSync Admin`;
+                sendEmail(emails, subject, text); // Async, fire and forget
+            }
+        }
+
         res.json({ success: true, message: 'Material added successfully', file_url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /deleteFile
+router.post('/deleteFile', async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ success: false, message: 'File ID required' });
+        
+        const [files] = await db.execute('SELECT file_url FROM files WHERE id = ?', [id]);
+        if (files.length > 0) {
+            const file_url = files[0].file_url;
+            // If it's a local file, remove it from the filesystem
+            if (file_url.startsWith('/uploads/')) {
+                const filePath = path.join(__dirname, '..', file_url);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            }
+            await db.execute('DELETE FROM files WHERE id = ?', [id]);
+            res.json({ success: true, message: 'File deleted successfully' });
+        } else {
+            res.status(404).json({ success: false, message: 'File not found' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /sendAnnouncement
+router.post('/sendAnnouncement', async (req, res) => {
+    try {
+        const { subject, message, division, academic_year } = req.body;
+        if (!subject || !message) {
+            return res.status(400).json({ success: false, message: 'Subject and message are required' });
+        }
+
+        let query = "SELECT name, extra_info FROM students WHERE status = 'active'";
+        let params = [];
+        
+        if (academic_year) {
+            query += " AND archived_year = ?";
+            params.push(academic_year);
+        }
+        
+        if (division && division !== 'ALL') {
+            query += " AND division = ?";
+            params.push(division);
+        }
+
+        const [students] = await db.execute(query, params);
+        const emails = students
+            .map(s => {
+                try {
+                    const extra = typeof s.extra_info === 'string' ? JSON.parse(s.extra_info || '{}') : (s.extra_info || {});
+                    return extra['Email'] || extra['email'] || extra['Email ID'] || extra['EMAIL'];
+                } catch(e) { return null; }
+            })
+            .filter(e => e);
+
+        if (emails.length === 0) {
+            return res.json({ success: false, message: 'No registered emails found for the selected students.' });
+        }
+
+        await sendEmail(emails, subject, message);
+        res.json({ success: true, message: `Announcement sent to ${emails.length} students.` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Server error' });

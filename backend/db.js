@@ -33,14 +33,22 @@ db.connect(async (err) => {
                 }
             }
         }
-        console.log('Verified students table schema.');
+        await db.promise().execute(`CREATE TABLE IF NOT EXISTS assignments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            enrollment_no VARCHAR(255) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            file_url VARCHAR(255) NOT NULL,
+            submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (enrollment_no) REFERENCES students(enrollment_no) ON DELETE CASCADE
+        )`);
+        console.log('Verified students and assignments table schema.');
         await db.promise().execute(
             'INSERT IGNORE INTO admins (name, username, password) VALUES (?, ?, ?), (?, ?, ?)',
             ['Admin User', 'admin', 'admin123', 'Assistant Admin', 'admin2', 'admin456']
         );
         console.log('Ensured default admin accounts exist.');
     } catch (schemaErr) {
-        console.error('Error ensuring students schema:', schemaErr.message);
+        console.error('Error ensuring database schema:', schemaErr.message);
     }
 });
 

@@ -36,7 +36,7 @@ window.showAppModal = function(title, message, type = 'alert', callback = null) 
             <p style="color:#a1a1aa;font-size:0.95rem;white-space:pre-wrap;line-height:1.4;">${message}</p>
             ${inputHtml}
             <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
-                ${type === 'prompt' ? `<button class="btn" id="appModalCancelBtn" style="background:transparent;border:1px solid #52525b;color:#a1a1aa;width:auto;padding:0.5rem 1rem;">Cancel</button>` : ''}
+                ${(type === 'prompt' || type === 'confirm') ? `<button class="btn" id="appModalCancelBtn" style="background:transparent;border:1px solid #52525b;color:#a1a1aa;width:auto;padding:0.5rem 1rem;">Cancel</button>` : ''}
                 <button class="btn" id="appModalOkBtn" style="width:auto;padding:0.5rem 1.5rem;background:#10b981;">OK</button>
             </div>
         </div>
@@ -54,11 +54,15 @@ window.showAppModal = function(title, message, type = 'alert', callback = null) 
         close(val);
     };
     
+    if (type === 'prompt' || type === 'confirm') {
+        const cancelBtn = document.getElementById('appModalCancelBtn');
+        if (cancelBtn) cancelBtn.onclick = () => close(null);
+    }
+    
     if (type === 'prompt') {
         const inp = document.getElementById('appModalInput');
         setTimeout(() => inp.focus(), 100);
         inp.onkeyup = (e) => { if (e.key === 'Enter') document.getElementById('appModalOkBtn').click(); };
-        document.getElementById('appModalCancelBtn').onclick = () => close(null);
     }
 };
 
@@ -193,6 +197,47 @@ if (window.location.pathname.endsWith('index.html') || window.location.pathname.
             }
         });
     }
+
+    // Forgot Password Logic
+    window.showForgotPasswordModal = function() {
+        document.getElementById('forgotPasswordAlert').style.display = 'none';
+        document.getElementById('forgotPasswordId').value = '';
+        document.getElementById('forgotPasswordModal').style.display = 'flex';
+    };
+
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+    if (forgotPasswordForm) {
+        forgotPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('forgotPasswordId').value.trim();
+            const alertBox = document.getElementById('forgotPasswordAlert');
+            
+            alertBox.style.display = 'block';
+            alertBox.className = 'alert';
+            alertBox.innerText = 'Sending request...';
+            
+            try {
+                const res = await fetch(`${API_BASE}/auth/forgotPassword`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alertBox.className = 'alert success';
+                    alertBox.innerText = data.message;
+                } else {
+                    alertBox.className = 'alert error';
+                    alertBox.innerText = data.message;
+                }
+            } catch (err) {
+                alertBox.className = 'alert error';
+                alertBox.innerText = 'Server connection failed';
+            }
+        });
+    }
 }
 
 let deferredInstallPrompt = null;
@@ -300,11 +345,26 @@ async function loadStudentDashboard() {
                 try {
                     const extra = typeof p.extra_info === 'string' ? JSON.parse(p.extra_info) : p.extra_info;
                     for (const [k, v] of Object.entries(extra)) {
+                        if (!isNaN(k)) continue; // skip numeric keys like '24'
+                        if (String(k).toLowerCase() === 'password') continue;
                         profHtml += `<div><span style="color: var(--text-muted); font-size: 0.9rem;">${k}</span><br><strong style="font-size:1.1rem;">${v}</strong></div>`;
                     }
                 } catch(e) {}
             }
             document.getElementById('profileDetails').innerHTML = profHtml;
+            
+            // Check if profile needs completion
+            const isGenericName = p.name && p.name.startsWith('Student ');
+            let hasEmail = false;
+            try {
+                const extra = typeof p.extra_info === 'string' ? JSON.parse(p.extra_info) : p.extra_info;
+                hasEmail = !!(extra && (extra['Email'] || extra['email'] || extra['Email ID'] || extra['EMAIL']));
+            } catch(e) {}
+            
+            if (isGenericName || !hasEmail) {
+                document.getElementById('updateProfileSection').style.display = 'block';
+                if (!isGenericName) document.getElementById('updateProfileName').value = p.name;
+            }
         }
 
         // Fetch Attendance
@@ -343,9 +403,175 @@ async function loadStudentDashboard() {
                 `).join('');
             }
         }
+        
+        // Fetch Assignments
+        const assignRes = await fetch(`${API_BASE}/student/getAssignments/${user.enrollment_no}`);
+        const assignData = await assignRes.json();
+        if(assignData.success) {
+            const assignTbody = document.getElementById('assignmentsTableBody');
+            if (assignData.assignments.length === 0) {
+                assignTbody.innerHTML = '<tr><td colspan="3">No assignments submitted yet.</td></tr>';
+            } else {
+                assignTbody.innerHTML = assignData.assignments.map(a => `
+                    <tr>
+                        <td>${a.title}</td>
+                        <td>${new Date(a.submitted_at).toLocaleString()}</td>
+                        <td><a href="${normalizeFileUrl(a.file_url)}" target="_blank" class="download-btn" style="padding:0.2rem 0.5rem;font-size:0.8rem;">View</a></td>
+                    </tr>
+                `).join('');
+            }
+        }
     } catch(e) {
         console.error(e);
     }
+    
+    // Wire up Update Profile Form
+    const profileForm = document.getElementById('updateProfileForm');
+    if (profileForm && !profileForm.dataset.listener) {
+        profileForm.dataset.listener = "true";
+        profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const alertBox = document.getElementById('updateProfileAlert');
+            const name = document.getElementById('updateProfileName').value;
+            const email = document.getElementById('updateProfileEmail').value;
+            
+            try {
+                const res = await fetch(`${API_BASE}/student/updateProfile`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enrollment_no: user.enrollment_no, name, email })
+                });
+                const data = await res.json();
+                alertBox.style.display = 'block';
+                if (data.success) {
+                    alertBox.className = 'alert success';
+                    alertBox.innerText = 'Profile updated successfully! Refreshing...';
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    alertBox.className = 'alert error';
+                    alertBox.innerText = data.message || 'Failed to update profile';
+                }
+            } catch (err) {
+                alertBox.style.display = 'block';
+                alertBox.className = 'alert error';
+                alertBox.innerText = 'Server error';
+            }
+        });
+    }
+
+    // Wire up Assignment Form
+    const assignForm = document.getElementById('assignmentForm');
+    if (assignForm && !assignForm.dataset.listener) {
+        assignForm.dataset.listener = "true";
+        assignForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const alertBox = document.getElementById('assignmentAlert');
+            const title = document.getElementById('assignmentTitle').value;
+            const file = document.getElementById('assignmentFile').files[0];
+            
+            if (!file) return showAppModal('Error', 'Please select a file.', 'alert');
+            
+            const formData = new FormData();
+            formData.append('enrollment_no', user.enrollment_no);
+            formData.append('title', title);
+            formData.append('file', file);
+            
+            alertBox.style.display = 'block';
+            alertBox.className = 'alert';
+            alertBox.innerText = 'Uploading...';
+            
+            try {
+                const res = await fetch(`${API_BASE}/student/uploadAssignment`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alertBox.className = 'alert success';
+                    alertBox.innerText = 'Assignment submitted successfully!';
+                    assignForm.reset();
+                    loadStudentDashboard(); // Reload assignments table
+                } else {
+                    alertBox.className = 'alert error';
+                    alertBox.innerText = data.message || 'Failed to submit assignment';
+                }
+            } catch (err) {
+                alertBox.className = 'alert error';
+                alertBox.innerText = 'Server error';
+            }
+        });
+    }
+}
+
+// --- FILE EXPLORER UI LOGIC ---
+function buildFileTree(files) {
+    const root = { children: {}, files: [] };
+    
+    files.forEach(f => {
+        let folderStr = f.folder_name || 'Uncategorized';
+        const parts = folderStr.split(/[/\\]/).filter(p => p.trim() !== '');
+        if (parts.length === 0) parts.push('Uncategorized');
+        
+        let current = root;
+        parts.forEach(part => {
+            if (!current.children[part]) {
+                current.children[part] = { children: {}, files: [] };
+            }
+            current = current.children[part];
+        });
+        current.files.push(f);
+    });
+    
+    return root;
+}
+
+function countFiles(node) {
+    let count = node.files.length;
+    for (const child in node.children) {
+        count += countFiles(node.children[child]);
+    }
+    return count;
+}
+
+function buildFileTreeHtml(node, pathId, isAdmin) {
+    let html = '';
+    const childNames = Object.keys(node.children).sort();
+    
+    childNames.forEach(childName => {
+        const childNode = node.children[childName];
+        const newPathId = pathId + '-' + childName.replace(/[^a-zA-Z0-9]/g, '_');
+        let totalFiles = countFiles(childNode);
+        
+        html += `
+        <div style="margin-bottom: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; border-left: 2px solid rgba(255,255,255,0.1);">
+            <div onclick="const el = document.getElementById('${newPathId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none'" 
+                 style="background: rgba(255,255,255,0.05); padding: 0.75rem 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;" 
+                 onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                <span style="font-weight: 600; font-size: 1rem;">📁 ${childName}</span>
+                <span class="badge badge-success" style="font-size: 0.75rem;">${totalFiles} Files</span>
+            </div>
+            <div id="${newPathId}" style="display: none; padding: 0.5rem 0.5rem 0.5rem 1rem;">
+                ${buildFileTreeHtml(childNode, newPathId, isAdmin)}
+            </div>
+        </div>
+        `;
+    });
+    
+    node.files.forEach(f => {
+        html += `
+        <div class="file-item" style="background: rgba(255,255,255,0.02); margin-bottom: 0.5rem; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; border-left: 2px solid #10b981;">
+            <div>
+                <strong>${f.file_name}</strong><br>
+                <small style="color:var(--text-muted)">${isAdmin ? `${f.visibility} • ` : ''}Uploaded by: ${f.uploaded_by || 'admin'}</small>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Download</a>
+                ${isAdmin ? `<button onclick="deleteFile(${f.id})" style="background: #ef4444; color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Delete</button>` : ''}
+            </div>
+        </div>`;
+    });
+    
+    return html;
 }
 
 // --- STUDENT FILES LOGIC ---
@@ -359,15 +585,8 @@ async function loadStudentFiles() {
             if (data.files.length === 0) {
                 container.innerHTML = '<p style="color:var(--text-muted)">No files available.</p>';
             } else {
-                container.innerHTML = data.files.map(f => `
-                    <div class="file-item">
-                        <div>
-                            <strong>${f.file_name}</strong><br>
-                            <small style="color:var(--text-muted)">Folder: ${f.folder_name}</small>
-                        </div>
-                        <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn">Download</a>
-                    </div>
-                `).join('');
+                const root = buildFileTree(data.files);
+                container.innerHTML = buildFileTreeHtml(root, 'student-files', false);
             }
         }
     } catch (e) {
@@ -383,26 +602,13 @@ async function loadAdminFiles() {
         const container = document.getElementById('adminFilesContainer');
 
         if (!container) return;
-        if (!data.success) {
-            container.innerHTML = '<p style="color:var(--text-muted)">Unable to load files.</p>';
-            return;
-        }
-
-        if (data.files.length === 0) {
+        if (!data.success || data.files.length === 0) {
             container.innerHTML = '<p style="color:var(--text-muted)">No uploaded materials found yet.</p>';
             return;
         }
 
-        container.innerHTML = data.files.map(f => `
-            <div class="file-item">
-                <div>
-                    <strong>${f.file_name}</strong><br>
-                    <small style="color:var(--text-muted)">Folder: ${f.folder_name} • ${f.visibility}</small><br>
-                    <small style="color:var(--text-muted)">Uploaded by: ${f.uploaded_by || 'admin'}</small>
-                </div>
-                <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn">Download</a>
-            </div>
-        `).join('');
+        const root = buildFileTree(data.files);
+        container.innerHTML = buildFileTreeHtml(root, 'admin-files', true);
     } catch (err) {
         const container = document.getElementById('adminFilesContainer');
         if (container) {
@@ -412,11 +618,70 @@ async function loadAdminFiles() {
     }
 }
 
+window.deleteFile = function(id) {
+    showAppModal('Delete File', 'Are you sure you want to delete this file? This action cannot be undone.', 'confirm', async (isConfirmed) => {
+        if (isConfirmed) {
+            try {
+                const res = await fetch(`${API_BASE}/admin/deleteFile`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadAdminFiles(); // refresh list
+                } else {
+                    showAppModal('Error', data.message || 'Failed to delete file', 'alert');
+                }
+            } catch (err) {
+                showAppModal('Error', 'Server error deleting file', 'alert');
+            }
+        }
+    });
+};
+
 // --- ADMIN DASHBOARD LOGIC ---
 function setupAdminListeners() {
     const bulkRegForm = document.getElementById('bulkRegForm');
     const uploadForm = document.getElementById('uploadForm');
     const musterForm = document.getElementById('musterForm');
+    const announcementForm = document.getElementById('announcementForm');
+
+    // Announcement Broadcast
+    if (announcementForm) {
+        announcementForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const alertBox = document.getElementById('announcementAlert');
+            const division = document.getElementById('announcementDivision').value;
+            const subject = document.getElementById('announcementSubject').value;
+            const message = document.getElementById('announcementMessage').value;
+            const academic_year = getAcademicYear();
+            
+            alertBox.style.display = 'block';
+            alertBox.className = 'alert';
+            alertBox.innerText = 'Sending emails...';
+            
+            try {
+                const res = await fetch(`${API_BASE}/admin/sendAnnouncement`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ division, subject, message, academic_year })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alertBox.className = 'alert success';
+                    alertBox.innerText = data.message;
+                    announcementForm.reset();
+                } else {
+                    alertBox.className = 'alert error';
+                    alertBox.innerText = data.message || 'Failed to send announcement';
+                }
+            } catch (err) {
+                alertBox.className = 'alert error';
+                alertBox.innerText = 'Server error';
+            }
+        });
+    }
 
     // Muster File Sync
     if(musterForm) {
@@ -575,13 +840,32 @@ async function loadMainDirectory() {
             
             // Group: Year → Division → Students
             const yearGroups = {};
+            const uniqueDivisions = new Set();
+            const currentYear = getAcademicYear();
+            
             data.students.forEach(s => {
                 const year = s.archived_year || 'Unassigned';
                 const div = s.division || 'Unknown';
                 if (!yearGroups[year]) yearGroups[year] = {};
                 if (!yearGroups[year][div]) yearGroups[year][div] = [];
                 yearGroups[year][div].push(s);
+                
+                if (year === currentYear || (year === 'Unassigned' && Object.keys(yearGroups).length === 1)) {
+                    uniqueDivisions.add(div);
+                }
             });
+            
+            // Populate Announcement Divisions
+            const annDivSelect = document.getElementById('announcementDivision');
+            if (annDivSelect) {
+                annDivSelect.innerHTML = '<option value="ALL">All Divisions (Current Sem)</option>';
+                Array.from(uniqueDivisions).sort().forEach(div => {
+                    const opt = document.createElement('option');
+                    opt.value = div;
+                    opt.text = `Division ${div}`;
+                    annDivSelect.appendChild(opt);
+                });
+            }
             
             let html = '';
             for (const [year, divisions] of Object.entries(yearGroups)) {
@@ -944,6 +1228,31 @@ window.openStudentModal = async function(enrollment_no, name) {
         }
     } catch(e) {
         document.getElementById('modalMarksList').innerText = 'Error';
+    }
+
+    try {
+        document.getElementById('modalAssignmentsList').innerText = 'Loading...';
+        const assignRes = await fetch(`${API_BASE}/student/getAssignments/${enrollment_no}`);
+        const assignData = await assignRes.json();
+        if(assignData.success) {
+            if(assignData.assignments.length === 0) {
+                document.getElementById('modalAssignmentsList').innerHTML = '<p style="font-size:0.9rem; color:var(--text-muted)">No assignments submitted.</p>';
+            } else {
+                let aHtml = '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
+                assignData.assignments.forEach(a => {
+                    aHtml += `
+                        <div style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;">
+                            <strong style="font-size: 0.9rem;">${a.title}</strong><br>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">${new Date(a.submitted_at).toLocaleDateString()}</span>
+                            <a href="${normalizeFileUrl(a.file_url)}" target="_blank" class="download-btn" style="float: right; padding: 0.2rem 0.5rem; font-size: 0.8rem; margin-top: -1.5rem;">View</a>
+                        </div>`;
+                });
+                aHtml += '</div>';
+                document.getElementById('modalAssignmentsList').innerHTML = aHtml;
+            }
+        }
+    } catch(e) {
+        document.getElementById('modalAssignmentsList').innerText = 'Error loading assignments';
     }
 };
 

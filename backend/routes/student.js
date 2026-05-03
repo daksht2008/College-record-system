@@ -59,5 +59,75 @@ router.get('/getFiles', async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const dir = path.join('./uploads/', 'assignments');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage: storage });
+
+// POST /updateProfile
+router.post('/updateProfile', async (req, res) => {
+    try {
+        const { enrollment_no, name, email } = req.body;
+        
+        const [student] = await db.execute('SELECT extra_info FROM students WHERE enrollment_no = ?', [enrollment_no]);
+        if (student.length === 0) return res.status(404).json({ success: false, message: 'Student not found' });
+        
+        let extra = {};
+        try {
+            extra = typeof student[0].extra_info === 'string' ? JSON.parse(student[0].extra_info || '{}') : (student[0].extra_info || {});
+        } catch(e) {}
+        
+        if (email) extra['Email'] = email;
+        
+        await db.execute('UPDATE students SET name = ?, extra_info = ? WHERE enrollment_no = ?', [name, JSON.stringify(extra), enrollment_no]);
+        res.json({ success: true, message: 'Profile updated successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /uploadAssignment
+router.post('/uploadAssignment', upload.single('file'), async (req, res) => {
+    try {
+        const { enrollment_no, title } = req.body;
+        if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+        if (!title) return res.status(400).json({ success: false, message: 'Assignment title required' });
+        
+        const file_url = `/uploads/assignments/${req.file.filename}`;
+        
+        await db.execute(
+            'INSERT INTO assignments (enrollment_no, title, file_url) VALUES (?, ?, ?)',
+            [enrollment_no, title, file_url]
+        );
+        res.json({ success: true, message: 'Assignment submitted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// GET /getAssignments/:enrollment_no
+router.get('/getAssignments/:enrollment_no', async (req, res) => {
+    try {
+        const { enrollment_no } = req.params;
+        const [assignments] = await db.execute('SELECT * FROM assignments WHERE enrollment_no = ? ORDER BY submitted_at DESC', [enrollment_no]);
+        res.json({ success: true, assignments });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
 
 module.exports = router;
