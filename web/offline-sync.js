@@ -102,12 +102,14 @@ class EduSyncDB {
     );
   }
 
-  // Add Marks Record Locally
-  async addMarks(enrollmentNo, subject, marks) {
+  // Add Marks Record Locally (Queued for Sync)
+  // Accepts a course parameter (defaulting to Physics) to maintain academic course context.
+  async addMarks(enrollmentNo, subject, marks, course = 'Physics') {
     const record = {
       enrollment_no: enrollmentNo,
       subject: subject,
       marks: marks,
+      course: course,
       synced: false,
       timestamp: new Date().toISOString()
     };
@@ -296,7 +298,8 @@ class OfflineSyncManager {
     return result;
   }
 
-  // Sync Marks Records
+  // Sync Marks Records to Server
+  // Maps stored local IndexedDB marks records to updates payload (propagating the student's course).
   async syncMarks(records) {
     const result = { synced: 0, failed: 0 };
 
@@ -304,7 +307,8 @@ class OfflineSyncManager {
       const updates = records.map(r => ({
         enrollment_no: r.enrollment_no,
         subject: r.subject,
-        marks: r.marks
+        marks: r.marks,
+        course: r.course || 'Physics'
       }));
 
       const response = await fetch(`${this.apiBase}/admin/bulkUpdateMarks`, {

@@ -1,5 +1,5 @@
 // EduSync Service Worker - Offline-First Architecture
-const CACHE_VERSION = 'edusync-v1';
+const CACHE_VERSION = 'edusync-v17';
 const CACHE_ASSETS = CACHE_VERSION + '-assets';
 const CACHE_DYNAMIC = CACHE_VERSION + '-dynamic';
 
@@ -102,4 +102,49 @@ self.addEventListener('sync', (event) => {
       })
     );
   }
+});
+
+// Push Event Listener - Handle incoming web push notifications
+self.addEventListener('push', (event) => {
+  let data = { title: 'EduSync Notification', message: 'New update from EduSync!' };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.message = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.message,
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
+    vibrate: [100, 50, 100],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: '1'
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Notification Click Listener - Focus or open the app when notification clicked
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        // Focus client window if open
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
+  );
 });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171717">
+    <meta name="theme-color" content="#050a14">
     <title>Files | EduSync - College Records</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
@@ -15,6 +15,7 @@
     <nav>
         <h1>EduSync</h1>
         <div class="nav-links">
+            <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode" style="margin-right: 0.5rem; display: inline-flex; border: none; padding: 0;">🌓</button>
             <a href="dashboard.html">Dashboard</a>
             <a href="files.html" class="active">Files</a>
             <button onclick="logout()">Logout</button>
@@ -22,28 +23,68 @@
     </nav>
 
     <div class="container">
-        <h2 style="margin-bottom: 1.5rem;">Study Materials</h2>
+        <div style="margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">
+                <span style="background: linear-gradient(135deg, #10b981, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Study Materials</span>
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">Browse and download course materials shared by your instructors</p>
+        </div>
+        
+        <div class="glass-card" style="margin-bottom: 2rem;" id="studentTimetableSection">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;">
+                    <span>📅</span> My Class Weekly Timetable (<span id="studentTimetableDivLabel">...</span>)
+                </h3>
+                <button onclick="downloadStudentTimetable()" class="btn" style="width: auto; background: linear-gradient(135deg, #a855f7, #7c3aed); border: none; padding: 0.5rem 1.2rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);">
+                    🖨️ Print / Save PDF
+                </button>
+            </div>
+            
+            <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 0.5rem;" id="studentPrintArea">
+                <table style="width: 100%; border-collapse: separate; border-spacing: 4px; text-align: center; table-layout: fixed; min-width: 800px;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.05);">
+                            <th style="width: 15%; padding: 0.6rem; border-radius: 4px; font-weight: 700; color: #f43f5e; font-size: 0.8rem;">TIME SLOT</th>
+                            <th style="padding: 0.6rem; border-radius: 4px; font-size: 0.8rem;">MONDAY</th>
+                            <th style="padding: 0.6rem; border-radius: 4px; font-size: 0.8rem;">TUESDAY</th>
+                            <th style="padding: 0.6rem; border-radius: 4px; font-size: 0.8rem;">WEDNESDAY</th>
+                            <th style="padding: 0.6rem; border-radius: 4px; font-size: 0.8rem;">THURSDAY</th>
+                            <th style="padding: 0.6rem; border-radius: 4px; font-size: 0.8rem;">FRIDAY</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTimetableBody">
+                        <!-- Populated by JavaScript based on student division -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
         
         <div class="glass-card">
+            <!-- Search & Filters -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <input type="text" id="filesSearchInput" class="form-control" placeholder="🔍 Search materials by name or tags (e.g. #unit1)..." oninput="filterMaterials()" style="flex: 1;">
+            </div>
             <div id="filesContainer">
-                <p>Loading files...</p>
+                <p style="color: var(--text-muted);">Loading files...</p>
             </div>
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script src="offline-sync.js"></script>
     <script src="app.js"></script>
     <script>
         // Register Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('✅ Service Worker registered'))
+                .then(reg => console.log('Service Worker registered'))
                 .catch(err => console.log('Service Worker registration failed:', err));
         }
         
         window.onload = () => {
             checkAuth('student');
             loadStudentFiles();
+            loadStudentTimetable();
         };
     </script>
 </body>

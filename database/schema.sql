@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS attendance (
 CREATE TABLE IF NOT EXISTS marks (
     id INT AUTO_INCREMENT PRIMARY KEY,
     enrollment_no VARCHAR(255) NOT NULL,
+    course VARCHAR(100) DEFAULT 'Physics',
     subject VARCHAR(255) NOT NULL,
     marks INT NOT NULL,
     FOREIGN KEY (enrollment_no) REFERENCES students(enrollment_no) ON DELETE CASCADE

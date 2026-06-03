@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+
+82<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171717">
+    <meta name="theme-color" content="#0c0a09">
     <title>Admin Dashboard | EduSync</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
@@ -15,17 +16,24 @@
     <nav>
         <h1>EduSync Admin</h1>
         <div class="nav-links">
-            <span id="liveClock" style="font-family: monospace; font-size: 0.95rem; color: #6ee7b7; margin-right: 1.5rem;"></span>
-            <button id="syncBtn" onclick="manualSync()" title="Sync offline data" style="margin-right: 1rem; background: #6ee7b7; color: #0f172a; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                🔄 Sync
+            <span id="liveClock" style="font-family: monospace; font-size: 0.95rem; color: #fda4af; margin-right: 1.5rem;"></span>
+            <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode" style="margin-right: 1rem; display: inline-flex; border: none; padding: 0;">🌓</button>
+            <button id="syncBtn" onclick="manualSync()" title="Sync offline data" style="margin-right: 1rem; background: linear-gradient(135deg, #f43f5e, #e11d48); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                &#x1F504; Sync
             </button>
             <button onclick="logout()">Logout</button>
         </div>
     </nav>
 
     <div class="container">
-        <div style="margin-bottom: 2rem;">
-            <h2>Admin Control Panel</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">Admin Control Panel</h2>
+                <p id="adminSubjectLabel" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;"></p>
+            </div>
+            <button class="btn" style="width: auto; background: linear-gradient(135deg, #a855f7, #7c3aed); border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.35);" onclick="openGeneralTimetable()">
+                📅 Timetable &amp; Schedule Manager
+            </button>
         </div>
 
         <div class="dashboard-grid">
@@ -33,7 +41,7 @@
             <!-- Bulk Registration -->
             <div class="glass-card">
                 <h3>Bulk Student Registration</h3>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Enter the starting and ending enrollment numbers to generate them instantly.</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Enter the starting and ending enrollment numbers to generate them instantly.</p>
                 <div id="regAlert" class="alert"></div>
                 <form id="bulkRegForm">
                     <div class="form-group">
@@ -69,8 +77,8 @@
 
             <!-- Sync Muster File -->
             <div class="glass-card">
-                <h3>Sync & Organize Muster Data</h3>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Upload list. Will be saved in the specified folder.</p>
+                <h3>Sync &amp; Organize Muster Data</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Upload list. Will be saved in the specified folder.</p>
                 <div id="musterAlert" class="alert"></div>
                 <form id="musterForm">
                     <div class="form-group">
@@ -81,14 +89,14 @@
                         <label>Select Muster File</label>
                         <input type="file" id="musterFile" class="form-control" accept=".xlsx,.xls,.csv,.pdf" required style="padding: 0.6rem;">
                     </div>
-                    <button type="submit" class="btn">Process & Save</button>
+                    <button type="submit" class="btn">Process &amp; Save</button>
                 </form>
             </div>
 
             <!-- Material Upload -->
             <div class="glass-card">
                 <h3>Upload Material</h3>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Upload files or add links. Organize with folders and subfolders.</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Upload files or add links. Organize with folders and subfolders.</p>
                 <div id="uploadAlert" class="alert"></div>
                 
                 <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
@@ -102,7 +110,7 @@
                     <div class="form-group">
                         <label>Folder Path</label>
                         <div id="folderBreadcrumb" style="display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; min-height: 2rem; font-size: 0.9rem;">
-                            <span style="color: #6ee7b7; cursor: pointer;" onclick="resetFolderPath()">📁 Root</span>
+                            <span style="color: #fda4af; cursor: pointer;" onclick="resetFolderPath()">&#x1F4C2; Root</span>
                         </div>
                         <input type="hidden" id="materialFolderPath" value="">
                         <div style="display: flex; gap: 0.5rem;">
@@ -112,7 +120,7 @@
                                 <option value="Maths">Maths</option>
                             </select>
                             <button type="button" class="btn" style="width: auto; padding: 0 1rem;" onclick="createNewFolder()" title="Create new folder">+</button>
-                            <button type="button" class="btn" style="width: auto; padding: 0 0.8rem; background: transparent; border: 1px solid rgba(255,255,255,0.2);" onclick="addSubfolder()" title="Add subfolder inside current">📂+</button>
+                            <button type="button" class="btn" style="width: auto; padding: 0 0.8rem; background: transparent; border: 1px solid rgba(255,255,255,0.2);" onclick="addSubfolder()" title="Add subfolder inside current">&#x1F4C1;+</button>
                         </div>
                     </div>
                     
@@ -134,6 +142,11 @@
                         <input type="url" id="materialLink" class="form-control" placeholder="https://youtube.com/...">
                     </div>
                     
+                    <div class="form-group">
+                        <label>Tags (Comma separated)</label>
+                        <input type="text" id="materialTags" class="form-control" placeholder="e.g. #midsem, #slides, #unit1">
+                    </div>
+                    
                     <button type="submit" class="btn">Add Material</button>
                 </form>
             </div>
@@ -141,7 +154,7 @@
             <!-- Send Announcement -->
             <div class="glass-card">
                 <h3>Send Announcement</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">Email an announcement to active students.</p>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Email an announcement to active students.</p>
                 <form id="announcementForm">
                     <div class="form-group">
                         <label>Target Audience</label>
@@ -165,20 +178,76 @@
                 </form>
             </div>
 
+            <!-- Chat / Discussion Hub Card -->
+            <div class="glass-card">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.25rem;">💬</span>
+                    <h3 style="margin: 0;">Class Discussion Hub</h3>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 1rem;">Admin Chat Console. Select a division to connect.</p>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label>Select Division Room</label>
+                    <select id="chatDivisionSelect" class="form-control" onchange="joinAdminChatRoom()">
+                        <option value="A">Division A</option>
+                        <option value="B">Division B</option>
+                        <option value="C">Division C</option>
+                    </select>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin-top: auto;">Select a room above to load chat.</div>
+                    </div>
+                    <form id="chatForm" class="chat-input-area" style="display: none;">
+                        <input type="text" id="chatInput" placeholder="Type an admin message..." required autocomplete="off">
+                        <button type="submit" class="btn">Send</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Face ID Registration -->
+            <div class="glass-card" style="border: 1px solid rgba(244, 63, 94, 0.12);">
+                <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                    <div style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, rgba(244,63,94,0.15), rgba(251,146,60,0.15)); border: 1px solid rgba(244,63,94,0.2);">
+                        <span style="font-size: 1.2rem;">&#x1F510;</span>
+                    </div>
+                    <div>
+                        <h3 style="background: linear-gradient(135deg, #fecdd3, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0;">Face ID Registration</h3>
+                        <p style="color: var(--text-muted); font-size: 0.82rem; margin: 0;">Register your admin face for passwordless login</p>
+                    </div>
+                </div>
+                <div id="faceRegStatus" style="margin-bottom: 1rem;"></div>
+                
+                <div style="position: relative; display: inline-block; border-radius: 16px; overflow: hidden; border: 2px solid rgba(244, 63, 94, 0.25); margin-bottom: 1rem; box-shadow: 0 0 30px rgba(244,63,94,0.08); animation: borderGlow 4s ease-in-out infinite;">
+                    <video id="faceRegVideo" autoplay muted playsinline style="width: 100%; max-width: 440px; border-radius: 14px; display: none; transform: scaleX(-1);"></video>
+                    <canvas id="faceRegCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1);"></canvas>
+                </div>
+                
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="button" class="btn" id="faceRegStartBtn" onclick="startFaceRegistration()" style="background: linear-gradient(135deg, #f43f5e 0%, #fb923c 50%, #f43f5e 100%); background-size: 200% 200%; animation: shimmer 3s linear infinite; width: auto; border: 1px solid rgba(244,63,94,0.3); padding: 0.7rem 1.5rem;">&#x1F4F7; Open Camera</button>
+                    <button type="button" class="btn" id="faceRegCaptureBtn" onclick="captureFaceRegistration()" style="background: linear-gradient(135deg, #22c55e, #16a34a); width: auto; display: none; padding: 0.7rem 1.5rem;">&#x2705; Capture &amp; Register</button>
+                    <button type="button" class="btn" id="faceRegStopBtn" onclick="stopFaceRegistration()" style="background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); width: auto; display: none; padding: 0.7rem 1.5rem;">Cancel</button>
+                </div>
+                <div id="faceRegAlert" class="alert" style="margin-top: 1rem; display: none;"></div>
+            </div>
+
             <div class="glass-card" style="grid-column: 1 / -1;">
-                <h3>📁 Uploaded Materials</h3>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">Admins can review all uploaded files, including private entries.</p>
+                <h3>&#x1F4C1; Uploaded Materials</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Admins can review all uploaded files, including private entries.</p>
+                <!-- Search & Filters -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                    <input type="text" id="adminFilesSearchInput" class="form-control" placeholder="🔍 Search materials by name or tags (e.g. #unit1)..." oninput="filterAdminMaterials()" style="flex: 1;">
+                </div>
                 <div id="adminFilesContainer">
                     <p>Loading files...</p>
                 </div>
             </div>
 
-            <!-- Student Directory — Unified Folder Tree -->
+            <!-- Student Directory -->
             <div class="glass-card" style="grid-column: 1 / -1;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <div>
-                        <h3>📚 Student Directory</h3>
-                        <p style="font-size: 0.9rem; color: var(--text-muted);">Browse by Academic Year → Division. Click to expand.</p>
+                        <h3>&#x1F4DA; Student Directory</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Browse by Academic Year &#x2192; Division. Click to expand.</p>
                     </div>
                 </div>
                 <div id="mainDirectory">
@@ -189,10 +258,13 @@
     </div>
 
     <!-- Attendance Modal -->
-    <div id="attendanceModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1100; justify-content: center; align-items: center;">
+    <div id="attendanceModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1100; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
         <div class="glass-card" style="width: 95%; max-width: 760px; max-height: 90vh; overflow-y: auto; position: relative; padding: 1.5rem;">
-            <button onclick="closeAttendanceModal()" style="position: absolute; right: 1rem; top: 1rem; background: transparent; color: white; font-size: 1.5rem; border: none; cursor: pointer;">&times;</button>
-            <h3 id="attendanceModalTitle" style="margin-bottom: 1rem;">Attendance</h3>
+            <button onclick="closeAttendanceModal()" style="position: absolute; right: 1rem; top: 1rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            <h3 id="attendanceModalTitle" style="margin-bottom: 0.5rem;">Attendance</h3>
+            <button type="button" class="btn" style="background: linear-gradient(135deg, #a855f7, #7c3aed); border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; width: 100%; box-shadow: 0 4px 10px rgba(124, 58, 237, 0.2);" onclick="openTimetableFromAttendance()">
+                📅 Mark Attendance via College Timetable Schedule
+            </button>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div class="form-group">
@@ -265,9 +337,9 @@
             </div>
 
             <div style="display: flex; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                <button type="button" class="btn" style="background: #10b981; flex: 1; min-width: 150px;" onclick="setAttendanceAll(true)">All Present</button>
-                <button type="button" class="btn" style="background: #ef4444; flex: 1; min-width: 150px;" onclick="setAttendanceAll(false)">All Absent</button>
-                <button type="button" class="btn" style="background: #2563eb; flex: 2; min-width: 180px;" onclick="saveDivisionAttendance()">Save Attendance</button>
+                <button type="button" class="btn" style="background: linear-gradient(135deg, #22c55e, #16a34a); flex: 1; min-width: 150px;" onclick="setAttendanceAll(true)">All Present</button>
+                <button type="button" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); flex: 1; min-width: 150px;" onclick="setAttendanceAll(false)">All Absent</button>
+                <button type="button" class="btn" style="background: linear-gradient(135deg, #f43f5e, #e11d48); flex: 2; min-width: 180px;" onclick="saveDivisionAttendance()">Save Attendance</button>
             </div>
         </div>
     </div>
@@ -275,27 +347,27 @@
     <!-- Student Modal (Side Panel) -->
     <div id="studentModal" class="modal" style="display: none; position: fixed; top: 0; right: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: flex-end;">
         <div class="glass-card" style="width: 90%; max-width: 400px; height: 100%; margin: 0; border-radius: 0; position: relative; animation: slideIn 0.3s forwards; overflow-y: auto;">
-            <button onclick="document.getElementById('studentModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; color: white; font-size: 1.5rem; border: none; cursor: pointer;">&times;</button>
+            <button onclick="document.getElementById('studentModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">&times;</button>
             
             <h3 id="modalStudentName" style="margin-bottom: 0.2rem; margin-top: 1rem;">Student Name</h3>
             <p id="modalEnrollment" style="color: var(--text-muted); margin-bottom: 1.5rem;">Enrollment</p>
             
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.5rem; color: #6ee7b7;">Attendance</h4>
+                <h4 style="margin-bottom: 0.5rem; color: #fda4af;">Attendance</h4>
                 <p>Overall: <strong id="modalAttendance">Loading...</strong></p>
             </div>
             
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.5rem; color: #60a5fa;">Academic Marks</h4>
+                <h4 style="margin-bottom: 0.5rem; color: #fb923c;">Academic Marks</h4>
                 <div id="modalMarksList">Loading...</div>
             </div>
             
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h4 style="margin-bottom: 0.5rem; color: #f472b6;">Assignments</h4>
+                <h4 style="margin-bottom: 0.5rem; color: #f43f5e;">Assignments</h4>
                 <div id="modalAssignmentsList">Loading...</div>
             </div>
             
-            <h4 style="margin-bottom: 0.5rem; color: #fbbf24;">Update Marks</h4>
+            <h4 style="margin-bottom: 0.5rem; color: #fb923c;">Update Marks</h4>
             <div id="modalMarksAlert" class="alert"></div>
             <form id="modalMarksForm">
                 <input type="hidden" id="modalMarksEnrollment">
@@ -318,9 +390,9 @@
     </div>
     
     <!-- Division Marks Modal -->
-    <div id="divMarksModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div id="divMarksModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
         <div class="glass-card" style="width: 95%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; position: relative;">
-            <button onclick="document.getElementById('divMarksModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; color: white; font-size: 1.5rem; border: none; cursor: pointer;">&times;</button>
+            <button onclick="document.getElementById('divMarksModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">&times;</button>
             <h3 id="divMarksTitle" style="margin-bottom: 1rem;">Division Marks</h3>
             
             <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
@@ -345,6 +417,121 @@
         </div>
     </div>
 
+    <!-- Graphical Timetable & Scheduler Modal -->
+    <div id="timetableModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1200; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="glass-card" style="width: 98%; max-width: 1400px; height: 95vh; display: flex; flex-direction: column; position: relative; padding: 1.5rem;">
+            <button onclick="closeTimetableModal()" style="position: absolute; right: 1rem; top: 1.25rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
+            
+            <div style="margin-bottom: 1rem;">
+                <h3 style="margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.4rem;">
+                    <span>📅</span> College Academic Timetable &amp; Schedule Manager
+                </h3>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">Click on any interactive time-slot cell to schedule, update, or clear sessions graphically.</p>
+            </div>
+
+            <!-- Division Selector Filter -->
+            <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; background: rgba(255,255,255,0.02); padding: 0.75rem 1rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 0.9rem; font-weight: 600;">Division View Filter:</span>
+                    <select id="timetableDivFilter" class="form-control" style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.85rem;" onchange="loadTimetableData()">
+                        <option value="ALL">All Divisions (Merged View)</option>
+                    </select>
+                </div>
+                <div id="timetableModeNotice" style="font-size: 0.82rem; color: #60a5fa; font-weight: 500;">
+                    💡 Select a specific division to add or edit slots.
+                </div>
+                
+                <div style="margin-left: auto; display: flex; gap: 0.75rem; font-size: 0.75rem; flex-wrap: wrap;">
+                    <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><span style="width:12px; height:12px; border-radius:3px; background: linear-gradient(135deg, #10b981, #059669);"></span> Theory</span>
+                    <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><span style="width:12px; height:12px; border-radius:3px; background: linear-gradient(135deg, #06b6d4, #0891b2);"></span> Lab Practical</span>
+                    <span style="display: inline-flex; align-items: center; gap: 0.3rem;"><span style="width:12px; height:12px; border-radius:3px; background: linear-gradient(135deg, #8b5cf6, #6d28d9);"></span> Tutorial</span>
+                </div>
+            </div>
+
+            <!-- Timetable Screen Space Table -->
+            <div style="flex: 1; overflow: auto; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: inset 0 4px 20px rgba(0,0,0,0.5);">
+                <table id="timetableGrid" style="width: 100%; border-collapse: separate; border-spacing: 4px; text-align: center; table-layout: fixed; min-width: 900px; height: 100%;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.05);">
+                            <th style="width: 15%; padding: 0.8rem; border-radius: 6px; font-weight: 700; color: #f43f5e;">TIME SLOT</th>
+                            <th style="padding: 0.8rem; border-radius: 6px;">MONDAY</th>
+                            <th style="padding: 0.8rem; border-radius: 6px;">TUESDAY</th>
+                            <th style="padding: 0.8rem; border-radius: 6px;">WEDNESDAY</th>
+                            <th style="padding: 0.8rem; border-radius: 6px;">THURSDAY</th>
+                            <th style="padding: 0.8rem; border-radius: 6px;">FRIDAY</th>
+                        </tr>
+                    </thead>
+                    <tbody id="timetableGridBody">
+                        <!-- Dynamic schedule rows generated by javascript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="timetableSelectionHint" style="margin-top: 0.75rem; text-align: center; display: none;">
+                <span style="background: rgba(244, 63, 94, 0.15); color: #fda4af; padding: 0.4rem 1.25rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(244, 63, 94, 0.25);">
+                    🎯 Click any scheduled class above to instantly mark attendance for that session!
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slot Editor Popover Modal -->
+    <div id="slotEditorModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1300; justify-content: center; align-items: center; backdrop-filter: blur(2px);">
+        <div class="glass-card" style="width: 90%; max-width: 440px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 10px 40px rgba(0,0,0,0.6); position: relative; padding: 1.5rem;">
+            <button onclick="document.getElementById('slotEditorModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            
+            <h4 id="slotEditorTitle" style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                🛠️ Edit Schedule Slot
+            </h4>
+            <p id="slotEditorSubtitle" style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;"></p>
+            
+            <form id="slotEditorForm">
+                <input type="hidden" id="slotEditorDay">
+                <input type="hidden" id="slotEditorTime">
+
+                <div class="form-group" id="slotEditorDivGroup">
+                    <label>Target Division</label>
+                    <select id="slotEditorDiv" class="form-control" required>
+                        <!-- Dynamically populated based on active divisions -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Select Subject</label>
+                    <select id="slotEditorSubject" class="form-control" required onchange="updateSlotEditorTypeOptions()">
+                        <option value="">-- Choose Subject --</option>
+                        <option value="Maths">Maths (Mathematics)</option>
+                        <option value="Physics">Physics</option>
+                        <option value="Basic Electrical Engineering">Basic Electrical Engineering</option>
+                        <option value="Mechanics">Mechanics</option>
+                        <option value="Computer Programming">Computer Programming</option>
+                        <option value="Engineering Graphics">Engineering Graphics</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Class Session Type</label>
+                    <select id="slotEditorType" class="form-control" required>
+                        <!-- Options populated dynamically -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Select Calendar Block Color</label>
+                    <input type="hidden" id="slotEditorColor" value="">
+                    <div id="slotColorPalette" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                        <!-- Generated dynamically by app.js -->
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="submit" class="btn" style="flex: 2; background: linear-gradient(135deg, #10b981, #059669);">Save Schedule</button>
+                    <button type="button" class="btn" style="flex: 1; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25);" onclick="clearSlotEditor()">Clear Slot</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <style>
         @keyframes slideIn {
             from { transform: translateX(100%); }
@@ -352,13 +539,39 @@
         }
     </style>
 
+    <!-- Assignment Grading Modal -->
+    <div id="assignmentGradingModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1400; justify-content: center; align-items: center; backdrop-filter: blur(2px);">
+        <div class="glass-card" style="width: 90%; max-width: 420px; padding: 1.5rem; position: relative;">
+            <button onclick="document.getElementById('assignmentGradingModal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background: rgba(255,255,255,0.05); color: #a8a29e; font-size: 1.2rem; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            
+            <h3 style="margin-bottom: 0.25rem;">Grade Assignment</h3>
+            <p id="gradingModalTitle" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">Assignment Title</p>
+            
+            <form id="assignmentGradingForm">
+                <input type="hidden" id="gradingModalAssignmentId">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label>Grade (A+, B, C, F, etc.)</label>
+                    <input type="text" id="gradingModalGrade" class="form-control" placeholder="e.g. A+" required maxlength="5">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label>Feedback / Comments</label>
+                    <textarea id="gradingModalFeedback" class="form-control" placeholder="Add optional comments..." style="min-height: 80px;"></textarea>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Submit Grade &amp; Send Alert</button>
+                <div id="gradingModalAlert" class="alert" style="margin-top: 1rem; display: none;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="face-api.min.js"></script>
     <script src="offline-sync.js"></script>
     <script src="app.js"></script>
     <script>
-        // Register Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('✅ Service Worker registered'))
+                .then(reg => console.log('Service Worker registered'))
                 .catch(err => console.log('Service Worker registration failed:', err));
         }
         

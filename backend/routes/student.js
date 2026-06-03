@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 
 // GET /profile/:enrollment_no
+// Retrieves details of a specific student by enrollment number.
 router.get('/profile/:enrollment_no', async (req, res) => {
     try {
         const { enrollment_no } = req.params;
@@ -13,7 +14,7 @@ router.get('/profile/:enrollment_no', async (req, res) => {
             res.status(404).json({ success: false, message: 'Student not found' });
         }
     } catch (err) {
-        console.error(err);
+        console.error('Error fetching student profile:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -63,13 +64,16 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+// Configure Multer for Student Assignment Uploads
+// Resolves uploads to backend/uploads/assignments dynamically using absolute pathing.
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const dir = path.join('./uploads/', 'assignments');
+        const dir = path.join(__dirname, '..', 'uploads', 'assignments');
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
     },
     filename: function (req, file, cb) {
+        // Prefix with timestamp to prevent duplicate filename clashes
         cb(null, Date.now() + '-' + file.originalname);
     }
 });
@@ -119,13 +123,14 @@ router.post('/uploadAssignment', upload.single('file'), async (req, res) => {
 });
 
 // GET /getAssignments/:enrollment_no
+// Fetches all assignments submitted by a student, including any grading marks and comments.
 router.get('/getAssignments/:enrollment_no', async (req, res) => {
     try {
         const { enrollment_no } = req.params;
         const [assignments] = await db.execute('SELECT * FROM assignments WHERE enrollment_no = ? ORDER BY submitted_at DESC', [enrollment_no]);
         res.json({ success: true, assignments });
     } catch (err) {
-        console.error(err);
+        console.error('Error fetching student assignments:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });

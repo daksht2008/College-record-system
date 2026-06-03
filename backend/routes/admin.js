@@ -9,10 +9,14 @@ const fs = require('fs');
 const { sendEmail } = require('../mailer');
 
 // Configure Multer for File Uploads
+// Resolves folder name safely using client inputs (supporting both camelCase and snake_case)
+// and stores files relative to the route directory using absolute paths.
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        let folder = req.body.folderName ? req.body.folderName.replace(/[^a-zA-Z0-9_-]/g, '') : 'uncategorized';
-        const dir = path.join('./uploads/', folder);
+        const rawFolder = req.body.folder_name || req.body.folderName || 'uncategorized';
+        const folder = rawFolder.replace(/[^a-zA-Z0-9_-]/g, '');
+        // Resolve upload path to backend/uploads/<folder> using absolute directories
+        const dir = path.join(__dirname, '..', 'uploads', folder);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
     },
@@ -96,15 +100,18 @@ router.get('/getAllStudents', async (req, res) => {
 // POST /markAttendance
 router.post('/markAttendance', async (req, res) => {
     try {
-        const { enrollment_no, date, status, division } = req.body;
+        const { enrollment_no, date, status, division, subject, type } = req.body;
+        const finalSubject = subject || 'Physics';
+        const finalType = type || 'Lecture';
         
-        // Check if attendance already exists for this date
-        const [existing] = await db.execute('SELECT id FROM attendance WHERE enrollment_no = ? AND date = ?', [enrollment_no, date]);
+        // Check if attendance already exists for this date AND subject
+        const [existing] = await db.execute('SELECT id FROM attendance WHERE enrollment_no = ? AND date = ? AND subject = ?', [enrollment_no, date, finalSubject]);
         
         if (existing.length > 0) {
             await db.execute('UPDATE attendance SET status = ? WHERE id = ?', [status, existing[0].id]);
         } else {
-            await db.execute('INSERT INTO attendance (enrollment_no, date, status, division) VALUES (?, ?, ?, ?)', [enrollment_no, date, status, division || 'A']);
+            await db.execute('INSERT INTO attendance (enrollment_no, date, status, division, subject, type) VALUES (?, ?, ?, ?, ?, ?)', 
+                [enrollment_no, date, status, division || 'A', finalSubject, finalType]);
         }
         
         res.json({ success: true, message: 'Attendance marked successfully' });
@@ -117,7 +124,7 @@ router.post('/markAttendance', async (req, res) => {
 // POST /syncAttendance (For Offline Sync from Android)
 router.post('/syncAttendance', async (req, res) => {
     try {
-        const { attendanceRecords } = req.body; // Array of { enrollment_no, date, status, division }
+        const { attendanceRecords } = req.body; // Array of { enrollment_no, date, status, division, subject, type }
         
         if (!attendanceRecords || attendanceRecords.length === 0) {
             return res.json({ success: true, message: 'No records to sync' });
@@ -125,13 +132,17 @@ router.post('/syncAttendance', async (req, res) => {
 
         let syncedCount = 0;
         for (let record of attendanceRecords) {
-            const { enrollment_no, date, status, division } = record;
-            const [existing] = await db.execute('SELECT id FROM attendance WHERE enrollment_no = ? AND date = ?', [enrollment_no, date]);
+            const { enrollment_no, date, status, division, subject, type } = record;
+            const finalSubject = subject || 'Physics';
+            const finalType = type || 'Lecture';
+            
+            const [existing] = await db.execute('SELECT id FROM attendance WHERE enrollment_no = ? AND date = ? AND subject = ?', [enrollment_no, date, finalSubject]);
             
             if (existing.length > 0) {
                 await db.execute('UPDATE attendance SET status = ? WHERE id = ?', [status, existing[0].id]);
             } else {
-                await db.execute('INSERT INTO attendance (enrollment_no, date, status, division) VALUES (?, ?, ?, ?)', [enrollment_no, date, status, division || 'A']);
+                await db.execute('INSERT INTO attendance (enrollment_no, date, status, division, subject, type) VALUES (?, ?, ?, ?, ?, ?)', 
+                    [enrollment_no, date, status, division || 'A', finalSubject, finalType]);
             }
             syncedCount++;
         }
@@ -171,7 +182,8 @@ router.post('/uploadMuster', upload.single('file'), async (req, res) => {
                 const trimmed = line.trim();
                 if (!trimmed) continue;
                 
-                // Strategy 1: Find 12-digit enrollment (starting with 20-29)
+                // PDF Row Extraction Strategies:
+                // Strategy 1: Look for a serial number followed by a 12-digit university enrollment number (starts with 20-29).
                 let actual_enrollment = null;
                 let srNo = null;
                 let name = null;
@@ -183,9 +195,11 @@ router.post('/uploadMuster', upload.single('file'), async (req, res) => {
                     actual_enrollment = srEnrollMatch[2];
                     const restStr = trimmed.replace(srEnrollMatch[0], ' ');
                     
+                    // Match student name (at least 3 characters of letters/spaces/periods)
                     const nameMatch = restStr.match(/[A-Za-z][A-Za-z\s\.]{3,}/);
                     if (nameMatch) {
                         name = nameMatch[0].trim();
+                        // Separate marks from the remaining line tokens (usually final token is the marks value)
                         const marksStr = restStr.replace(nameMatch[0], '').trim();
                         const tokens = marksStr.split(/\s+/).filter(t => t);
                         if (tokens.length > 0) {
@@ -198,7 +212,7 @@ router.post('/uploadMuster', upload.single('file'), async (req, res) => {
                         }
                     }
                 } else {
-                    // Strategy 2: No enrollment, just SR NO and Name
+                    // Strategy 2: If no 12-digit enrollment, fall back to parsing Serial Number + Name
                     const fallbackMatch = trimmed.match(/^(\d{1,3})\s+([A-Za-z][A-Za-z\s\.]{3,})/);
                     if (fallbackMatch) {
                         srNo = fallbackMatch[1];
@@ -254,8 +268,10 @@ router.post('/uploadMuster', upload.single('file'), async (req, res) => {
                     }
                     
                     if (midsemMarks !== null) {
-                        await db.execute('INSERT INTO marks (enrollment_no, subject, marks) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', 
-                            [enrollment_no, 'Midsem', String(midsemMarks), String(midsemMarks)]);
+                        // Associate the midsem marks with the admin's specific course (defaults to Physics)
+                        const course = req.body.course || 'Physics';
+                        await db.execute('INSERT INTO marks (enrollment_no, course, subject, marks) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', 
+                            [enrollment_no, course, 'Midsem', String(midsemMarks), String(midsemMarks)]);
                     }
             }
             return res.json({ success: true, message: `PDF Processed successfully: ${inserted} New Students inserted, ${updated} Students updated.` });
@@ -338,9 +354,11 @@ router.post('/uploadMuster', upload.single('file'), async (req, res) => {
                     return null;
                 };
 
+                // Fuzzy Header Lookup: checks columns dynamically by matching against keywords
                 const srNo = getVal(['srno', 'rollno', 'sr']);
                 let actual_enrollment = getVal(['enrollmentno', 'enrollmentid', 'enrollment']);
                 if (actual_enrollment) {
+                    // Cleanup non-digit characters and slice last 12 digits for standard university format
                     actual_enrollment = String(actual_enrollment).trim().replace(/\D/g, '').slice(-12);
                 }
                 const name = getVal(['name', 'student']);
@@ -418,20 +436,24 @@ router.post('/createFolder', async (req, res) => {
 });
 
 // POST /uploadFile
+// Saves study material details in the database and notifies students via email.
+// Resolves the file URL containing the subfolder structure to avoid 404 access errors.
 router.post('/uploadFile', upload.single('file'), async (req, res) => {
     try {
-        const { folder_name, visibility, uploaded_by, link_url } = req.body;
+        const { folder_name, visibility, uploaded_by, link_url, tags } = req.body;
         
         if (!req.file && !link_url) {
             return res.status(400).json({ success: false, message: 'No file or link provided' });
         }
 
-        const file_url = req.file ? `/uploads/${req.file.filename}` : link_url;
+        const rawFolder = folder_name || req.body.folderName || 'uncategorized';
+        const folder = rawFolder.replace(/[^a-zA-Z0-9_-]/g, '');
+        const file_url = req.file ? `/uploads/${folder}/${req.file.filename}` : link_url;
         const file_name = req.file ? req.file.originalname : link_url;
 
         await db.execute(
-            'INSERT INTO files (file_name, file_url, folder_name, visibility, uploaded_by) VALUES (?, ?, ?, ?, ?)',
-            [file_name, file_url, folder_name || 'root', visibility || 'public', uploaded_by || 'admin']
+            'INSERT INTO files (file_name, file_url, folder_name, visibility, uploaded_by, tags) VALUES (?, ?, ?, ?, ?, ?)',
+            [file_name, file_url, folder_name || 'root', visibility || 'public', uploaded_by || 'admin', tags || '']
         );
 
         if (visibility === 'public' || !visibility) {
@@ -560,10 +582,13 @@ router.post('/archiveDivision', async (req, res) => {
 });
 
 // POST /updateMarks
+// Updates marks for a single student.
 router.post('/updateMarks', async (req, res) => {
     try {
-        const { enrollment_no, subject, marks } = req.body;
-        await db.execute('INSERT INTO marks (enrollment_no, subject, marks) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', [enrollment_no, subject, String(marks), String(marks)]);
+        const { enrollment_no, subject, marks, course } = req.body;
+        const finalCourse = course || 'Physics';
+        await db.execute('INSERT INTO marks (enrollment_no, course, subject, marks) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', 
+            [enrollment_no, finalCourse, subject, String(marks), String(marks)]);
         res.json({ success: true, message: 'Marks updated successfully' });
     } catch(err) {
         console.error(err);
@@ -572,12 +597,17 @@ router.post('/updateMarks', async (req, res) => {
 });
 
 // POST /bulkUpdateMarks
+// Performs multi-student marks entries. Handles custom course values per student
+// passed during IndexedDB synchronizations from the client-side database.
 router.post('/bulkUpdateMarks', async (req, res) => {
     try {
-        const { updates } = req.body;
+        const { updates, course } = req.body;
+        const finalCourse = course || 'Physics';
         for (const u of updates) {
-            await db.execute('INSERT INTO marks (enrollment_no, subject, marks) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', 
-                [u.enrollment_no, u.subject, String(u.marks), String(u.marks)]);
+            // Read course from student update object, falling back to course payload and Physics
+            const studentCourse = u.course || finalCourse;
+            await db.execute('INSERT INTO marks (enrollment_no, course, subject, marks) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE marks = ?', 
+                [u.enrollment_no, studentCourse, u.subject, String(u.marks), String(u.marks)]);
         }
         res.json({ success: true });
     } catch(err) {
@@ -614,6 +644,109 @@ router.get('/getArchivedStudents', async (req, res) => {
         res.json({ success: true, students: displayStudents });
     } catch (err) {
         console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// GET /getSchedule
+router.get('/getSchedule', async (req, res) => {
+    try {
+        const { division } = req.query;
+        let query = 'SELECT * FROM schedules';
+        let params = [];
+        if (division) {
+            query += ' WHERE division = ?';
+            params.push(division);
+        }
+        const [schedules] = await db.execute(query, params);
+        res.json({ success: true, schedules });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /saveSchedule
+router.post('/saveSchedule', async (req, res) => {
+    try {
+        const { day, time_slot, subject, type, division, color } = req.body;
+        
+        // Remove first if empty subject
+        if (!subject || subject.trim() === '') {
+            await db.execute('DELETE FROM schedules WHERE day = ? AND time_slot = ? AND division = ?', [day, time_slot, division]);
+            return res.json({ success: true, message: 'Slot cleared' });
+        }
+
+        // Check if exists
+        const [existing] = await db.execute('SELECT id, subject FROM schedules WHERE day = ? AND time_slot = ? AND division = ?', [day, time_slot, division]);
+        
+        if (existing.length > 0) {
+            // Clash Prevention Rule: If slot is already booked for this division under a DIFFERENT subject, block it.
+            // This guarantees division-level clash-free schedule consistency.
+            if (existing[0].subject && existing[0].subject !== subject) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Clash detected! Division ${division} is already booked for "${existing[0].subject}" at this time.`
+                });
+            }
+            await db.execute('UPDATE schedules SET subject = ?, type = ?, color = ? WHERE id = ?', 
+                [subject, type, color, existing[0].id]);
+        } else {
+            await db.execute('INSERT INTO schedules (day, time_slot, subject, type, division, color) VALUES (?, ?, ?, ?, ?, ?)', 
+                [day, time_slot, subject, type, division, color]);
+        }
+        
+        res.json({ success: true, message: 'Schedule slot updated' });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// POST /gradeAssignment
+// Allows teachers to grade and review assignments. Triggers push notification to the student.
+router.post('/gradeAssignment', async (req, res) => {
+    try {
+        const { assignment_id, grade, feedback, graded_by } = req.body;
+        if (!assignment_id || !grade) {
+            return res.status(400).json({ success: false, message: 'Assignment ID and Grade are required.' });
+        }
+
+        // Fetch details to send push notification
+        const [assignment] = await db.execute('SELECT enrollment_no, title FROM assignments WHERE id = ?', [assignment_id]);
+        if (assignment.length === 0) {
+            return res.status(404).json({ success: false, message: 'Assignment not found.' });
+        }
+
+        const { enrollment_no, title } = assignment[0];
+
+        // Update DB
+        await db.execute(
+            'UPDATE assignments SET grade = ?, feedback = ?, graded_by = ? WHERE id = ?',
+            [grade, feedback || null, graded_by || 'Admin', assignment_id]
+        );
+
+        // Dispatch push alert if student is subscribed
+        const sendPush = req.app.get('sendPushNotification');
+        if (sendPush) {
+            sendPush(enrollment_no, 'Assignment Graded!', `Your assignment "${title}" has been graded: ${grade}`);
+        }
+
+        res.json({ success: true, message: 'Assignment graded successfully!' });
+    } catch(err) {
+        console.error('Error grading assignment:', err);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// GET /divisions
+router.get('/divisions', async (req, res) => {
+    try {
+        const [rows] = await db.execute("SELECT DISTINCT division FROM students WHERE status = 'active' ORDER BY division ASC");
+        const divisions = rows.map(r => r.division);
+        res.json({ success: true, divisions });
+    } catch (err) {
+        console.error('Error fetching divisions:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });

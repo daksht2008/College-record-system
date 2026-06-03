@@ -370,37 +370,118 @@ async function loadStudentDashboard() {
         // Fetch Attendance
         const attRes = await fetch(`${API_BASE}/student/getAttendance/${user.enrollment_no}`);
         const attData = await attRes.json();
-        if(attData.success) {
-            document.getElementById('attendancePercent').innerText = `${attData.percentage}%`;
-            
+        if (attData.success) {
+            const pct = attData.percentage;
+            document.getElementById('attendancePercent').innerText = `${pct}%`;
+
+            // Low attendance warning
+            const warn = document.getElementById('attLowWarning');
+            if (warn) warn.style.display = pct < 75 ? 'block' : 'none';
+
+            // Pie chart
+            const pieCtx = document.getElementById('attPieChart');
+            if (pieCtx && typeof Chart !== 'undefined') {
+                if (window._attPieChart) window._attPieChart.destroy();
+                const present = attData.attendance.filter(a => a.status === 'Present').length;
+                const absent  = attData.attendance.length - present;
+                window._attPieChart = new Chart(pieCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Present', 'Absent'],
+                        datasets: [{
+                            data: [present, absent],
+                            backgroundColor: ['rgba(34,197,94,0.8)', 'rgba(239,68,68,0.65)'],
+                            borderColor:     ['rgba(34,197,94,1)',   'rgba(239,68,68,1)'],
+                            borderWidth: 2,
+                            hoverOffset: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '72%',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(12,10,9,0.92)',
+                                titleColor: '#fafaf9',
+                                bodyColor: '#a8a29e',
+                                borderColor: 'rgba(244,63,94,0.25)',
+                                borderWidth: 1,
+                                cornerRadius: 8,
+                                padding: 10,
+                                callbacks: {
+                                    label: ctx => ` ${ctx.label}: ${ctx.parsed} days`
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Attendance table — now shows Subject + Type (truncated to 3 rows by default)
             const attTbody = document.getElementById('attendanceTableBody');
             if (attData.attendance.length === 0) {
-                attTbody.innerHTML = '<tr><td colspan="3">No records found</td></tr>';
+                attTbody.innerHTML = '<tr><td colspan="5">No records found</td></tr>';
+                const toggleContainer = document.getElementById('attTableToggleContainer');
+                if (toggleContainer) toggleContainer.style.display = 'none';
             } else {
-                attTbody.innerHTML = attData.attendance.map(a => `
-                    <tr>
+                attTbody.innerHTML = attData.attendance.map((a, idx) => {
+                    const typeLabel = a.type || '-';
+                    const subjLabel = a.subject || '-';
+                    const typeColor = typeLabel === 'Lab' ? '#fb923c' : typeLabel === 'Tutorial' ? '#a78bfa' : '#60a5fa';
+                    const hideStyle = idx >= 3 ? ' style="display: none;" class="att-row-hidden"' : '';
+                    return `<tr${hideStyle}>
                         <td>${new Date(a.date).toLocaleDateString()}</td>
-                        <td><span class="badge ${a.status==='Present' ? 'badge-success' : 'badge-danger'}">${a.status}</span></td>
+                        <td>${subjLabel}</td>
+                        <td><span style="padding:0.15rem 0.55rem;border-radius:9999px;font-size:0.78rem;font-weight:700;background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}44;">${typeLabel}</span></td>
+                        <td><span class="badge ${a.status === 'Present' ? 'badge-success' : 'badge-danger'}">${a.status}</span></td>
                         <td>${a.division || '-'}</td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
+
+                const toggleContainer = document.getElementById('attTableToggleContainer');
+                if (toggleContainer) {
+                    if (attData.attendance.length > 3) {
+                        toggleContainer.style.display = 'block';
+                        const toggleBtn = document.getElementById('attTableToggleBtn');
+                        const toggleText = document.getElementById('attTableToggleText');
+                        const toggleIcon = document.getElementById('attTableToggleIcon');
+                        
+                        let expanded = false;
+                        toggleBtn.onclick = () => {
+                            expanded = !expanded;
+                            const hiddenRows = document.querySelectorAll('.att-row-hidden');
+                            hiddenRows.forEach(row => {
+                                row.style.display = expanded ? 'table-row' : 'none';
+                            });
+                            toggleText.innerText = expanded ? 'Show Less' : 'Show All Records';
+                            toggleIcon.innerText = expanded ? '▲' : '▼';
+                        };
+                    } else {
+                        toggleContainer.style.display = 'none';
+                    }
+                }
             }
         }
 
         // Fetch Marks
         const marksRes = await fetch(`${API_BASE}/student/getMarks/${user.enrollment_no}`);
         const marksData = await marksRes.json();
-        if(marksData.success) {
-            const marksTbody = document.getElementById('marksTableBody');
+        if (marksData.success) {
             if (marksData.marks.length === 0) {
-                marksTbody.innerHTML = '<tr><td colspan="2">No marks uploaded yet</td></tr>';
+                document.getElementById('marksNoData').style.display = 'block';
+                document.getElementById('marksChartContainer').style.display = 'none';
             } else {
-                marksTbody.innerHTML = marksData.marks.map(m => `
-                    <tr>
-                        <td>${m.subject}</td>
-                        <td><strong>${m.marks}</strong></td>
-                    </tr>
-                `).join('');
+                document.getElementById('marksNoData').style.display = 'none';
+                document.getElementById('marksChartContainer').style.display = 'block';
+
+                // Store marks globally for drilldown
+                window._allMarks = marksData.marks;
+                window._marksMode = 'overview'; // 'overview' | 'drilldown'
+
+                showMarksOverview();
+                renderSkillRadar();
             }
         }
         
@@ -417,6 +498,8 @@ async function loadStudentDashboard() {
                         <td>${a.title}</td>
                         <td>${new Date(a.submitted_at).toLocaleString()}</td>
                         <td><a href="${normalizeFileUrl(a.file_url)}" target="_blank" class="download-btn" style="padding:0.2rem 0.5rem;font-size:0.8rem;">View</a></td>
+                        <td><strong style="color: var(--primary);">${a.grade || 'Pending'}</strong></td>
+                        <td style="font-size: 0.8rem; color: var(--text-muted);">${a.feedback || 'No comments'}</td>
                     </tr>
                 `).join('');
             }
@@ -501,7 +584,286 @@ async function loadStudentDashboard() {
             }
         });
     }
+
+    // Setup PWA Web Push notifications and room websocket chats
+    if (typeof setupPushNotifications === 'function') setupPushNotifications();
+    if (typeof joinStudentChatRoom === 'function') joinStudentChatRoom();
 }
+
+// ---- MARKS CHART HELPERS ----
+// Overview: Midsem (out of 30) + Internals total (out of 50)
+// Drilldown: individual marks per internal subject with % on tooltip
+
+const MIDSEM_MAX = 30;
+const INTERNALS_MAX = 50; // Lab Practical(15)+Viva(10)+Project(15)+SelfLearning(10)
+const INTERNAL_SUBJECTS_MAX = { 'Lab Practical': 15, 'Viva': 10, 'Project': 15, 'Self Learning': 10 };
+
+function _buildMarksChart(ctx, labels, values, actualValues, maxValues, onClickFn, customBgColors, customBorderColors) {
+    if (window._marksChart) window._marksChart.destroy();
+    const colors = ['#f43f5e','#fb923c','#eab308','#22c55e','#a855f7','#3b82f6'];
+    window._marksChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Percentage',
+                data: values,
+                backgroundColor: customBgColors || labels.map((_, i) => colors[i % colors.length] + 'b3'),
+                borderColor:     customBorderColors || labels.map((_, i) => colors[i % colors.length]),
+                borderWidth: 2,
+                borderRadius: 8,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: (event, elements) => {
+                if (elements.length > 0 && onClickFn) onClickFn(elements[0].index);
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(12,10,9,0.92)',
+                    titleColor: '#fafaf9',
+                    bodyColor: '#a8a29e',
+                    borderColor: 'rgba(244,63,94,0.25)',
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    padding: 10,
+                    callbacks: {
+                        label: function(ctx) {
+                            const val = ctx.parsed.y;
+                            const actual = actualValues ? actualValues[ctx.dataIndex] : val;
+                            const max = maxValues ? maxValues[ctx.dataIndex] : null;
+                            return ` Marks: ${actual}${max ? ' / ' + max : ''} (${Math.round(val)}%)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    grid: { color: document.body.classList.contains('light-theme') ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)' },
+                    ticks: { color: document.body.classList.contains('light-theme') ? '#1c1917' : '#a8a29e', font: { family: 'Inter', size: 11 } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: document.body.classList.contains('light-theme') ? '#1c1917' : '#a8a29e', font: { family: 'Inter', size: 11, weight: 600 } }
+                }
+            }
+        }
+    });
+}
+
+window.showMarksOverview = function() {
+    const marks = window._allMarks;
+    if (!marks || marks.length === 0) return;
+    window._marksMode = 'overview';
+
+    // Group by course and track pass/fail components
+    const courseGroups = {};
+    marks.forEach(m => {
+        const c = m.course || 'Physics';
+        if (!courseGroups[c]) courseGroups[c] = { total: 0, midsem: 0, internals: 0, max: 80 }; 
+        const val = parseFloat(m.marks) || 0;
+        courseGroups[c].total += val;
+        if (m.subject === 'Midsem') {
+            courseGroups[c].midsem += val;
+        } else {
+            courseGroups[c].internals += val;
+        }
+    });
+
+    const labels = Object.keys(courseGroups);
+    const actualValues = labels.map(c => courseGroups[c].total);
+    const maxVals = labels.map(c => courseGroups[c].max);
+    const values = actualValues.map((v, i) => (v / maxVals[i]) * 100);
+    
+    // Check 40% criteria
+    const failedSubjects = [];
+    const bgColors = [];
+    const borderColors = [];
+    const colors = ['#f43f5e','#fb923c','#eab308','#22c55e','#a855f7','#3b82f6'];
+    
+    labels.forEach((c, i) => {
+        const cg = courseGroups[c];
+        const defaultColor = colors[i % colors.length];
+        const midsemFail = cg.midsem < 12; // 40% of 30
+        const internalsFail = cg.internals < 20; // 40% of 50
+        
+        if (midsemFail || internalsFail) {
+            let reasons = [];
+            if (midsemFail) reasons.push('Midsem');
+            if (internalsFail) reasons.push('Internals');
+            failedSubjects.push(`${c} (${reasons.join(', ')})`);
+            bgColors.push('rgba(239, 68, 68, 0.4)'); // Red with opacity
+            borderColors.push('#ef4444'); // Solid red border
+        } else {
+            bgColors.push(defaultColor + 'b3');
+            borderColors.push(defaultColor);
+        }
+    });
+
+    const ctx = document.getElementById('marksChart');
+    if (!ctx) return;
+
+    // Update UI
+    const titleEl = document.getElementById('marksCardTitle');
+    const backBtn = document.getElementById('marksDrillBackBtn');
+    const hintEl  = document.getElementById('marksHint');
+    if (titleEl) titleEl.textContent = 'Marks Overview (All Subjects)';
+    if (backBtn) backBtn.style.display = 'none';
+    if (hintEl)  hintEl.textContent = 'Hover for actual marks · Click a bar to drill down';
+    
+    const statusEl = document.getElementById('marksStatus');
+    if (statusEl) {
+        statusEl.style.display = 'block';
+        if (failedSubjects.length > 0) {
+            statusEl.style.background = 'rgba(239,68,68,0.1)';
+            statusEl.style.color = '#f87171';
+            statusEl.style.border = '1px solid rgba(239,68,68,0.3)';
+            statusEl.innerHTML = `&#x26A0;&#xFE0F; Failing in: ${failedSubjects.join(' · ')}`;
+        } else {
+            statusEl.style.background = 'rgba(34,197,94,0.1)';
+            statusEl.style.color = '#4ade80';
+            statusEl.style.border = '1px solid rgba(34,197,94,0.3)';
+            statusEl.innerHTML = `&#x2705; Passing all subjects! (>= 40% criteria met)`;
+        }
+    }
+
+    _buildMarksChart(ctx, labels, values, actualValues, maxVals, (idx) => {
+        showMarksDrilldown(labels[idx]); // Drilldown on selected course
+    }, bgColors, borderColors);
+};
+
+window.showMarksDrilldown = function(courseName) {
+    const marks = window._allMarks;
+    if (!marks) return;
+    window._marksMode = 'drilldown';
+
+    const courseMarks = marks.filter(m => (m.course || 'Physics') === courseName);
+    const labels = courseMarks.map(m => m.subject);
+    const actualValues = courseMarks.map(m => parseFloat(m.marks) || 0);
+    const maxVals = courseMarks.map(m => m.subject === 'Midsem' ? MIDSEM_MAX : (INTERNAL_SUBJECTS_MAX[m.subject] || 15));
+    // Values as percentages for Y-axis
+    const values = actualValues.map((v, i) => (v / maxVals[i]) * 100);
+
+    const ctx = document.getElementById('marksChart');
+    if (!ctx) return;
+
+    const titleEl = document.getElementById('marksCardTitle');
+    const backBtn = document.getElementById('marksDrillBackBtn');
+    const hintEl  = document.getElementById('marksHint');
+    if (titleEl) titleEl.textContent = `${courseName} Marks`;
+    if (backBtn) {
+        backBtn.style.display = 'inline-block';
+        backBtn.onclick = window.showMarksOverview;
+    }
+    if (hintEl)  hintEl.textContent = 'Hover for actual marks · Click back to return';
+    
+    // Hide overview status and show specific drilldown pass/fail based on 40%
+    const statusEl = document.getElementById('marksStatus');
+    if (statusEl) {
+        const midsemMark = courseMarks.find(m => m.subject === 'Midsem');
+        const internalsTotal = actualValues.filter((_, i) => labels[i] !== 'Midsem').reduce((a,b)=>a+b, 0);
+        const midVal = midsemMark ? parseFloat(midsemMark.marks) : 0;
+        
+        let fails = [];
+        if (midVal < 12) fails.push(`Midsem (${midVal}/30)`);
+        if (internalsTotal < 20) fails.push(`Internals (${internalsTotal}/50)`);
+        
+        if (fails.length > 0) {
+            statusEl.style.background = 'rgba(239,68,68,0.1)';
+            statusEl.style.color = '#f87171';
+            statusEl.style.border = '1px solid rgba(239,68,68,0.3)';
+            statusEl.innerHTML = `&#x26A0;&#xFE0F; Failed ${courseName}: ${fails.join(' and ')}`;
+        } else {
+            statusEl.style.background = 'rgba(34,197,94,0.1)';
+            statusEl.style.color = '#4ade80';
+            statusEl.style.border = '1px solid rgba(34,197,94,0.3)';
+            statusEl.innerHTML = `&#x2705; Passed ${courseName}! Midsem: ${midVal}/30, Internals: ${internalsTotal}/50`;
+        }
+    }
+
+    _buildMarksChart(ctx, labels, values, actualValues, maxVals, null, null, null);
+};
+
+window.renderSkillRadar = function() {
+    const marks = window._allMarks;
+    if (!marks || marks.length === 0) return;
+    
+    // Group by course to calculate total percentage
+    const courseGroups = {};
+    marks.forEach(m => {
+        const c = m.course || 'Physics';
+        if (!courseGroups[c]) courseGroups[c] = { total: 0, max: 80 };
+        courseGroups[c].total += parseFloat(m.marks) || 0;
+    });
+
+    const labels = Object.keys(courseGroups);
+    const percentages = labels.map(c => Math.round((courseGroups[c].total / courseGroups[c].max) * 100));
+
+    const ctx = document.getElementById('radarChart');
+    if (!ctx) return;
+    
+    if (window._radarChart) window._radarChart.destroy();
+    
+    window._radarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Skill Match',
+                data: percentages,
+                backgroundColor: 'rgba(244, 63, 94, 0.25)', // rose-500 transparent
+                borderColor: '#f43f5e',
+                pointBackgroundColor: '#fb923c', // orange-400
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#fb923c',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                r: {
+                    angleLines: { color: document.body.classList.contains('light-theme') ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)' },
+                    grid: { color: document.body.classList.contains('light-theme') ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' },
+                    pointLabels: {
+                        color: document.body.classList.contains('light-theme') ? '#1c1917' : '#a8a29e',
+                        font: { family: 'Inter', size: 10, weight: 600 }
+                    },
+                    ticks: {
+                        display: false,
+                        min: 0,
+                        max: 100
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(12,10,9,0.92)',
+                    titleColor: '#fafaf9',
+                    bodyColor: '#a8a29e',
+                    borderColor: 'rgba(244,63,94,0.25)',
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    padding: 10,
+                    callbacks: {
+                        label: function(context) {
+                            return ` Mastery: ${context.parsed.r}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+};
 
 // --- FILE EXPLORER UI LOGIC ---
 function buildFileTree(files) {
@@ -559,10 +921,11 @@ function buildFileTreeHtml(node, pathId, isAdmin) {
     
     node.files.forEach(f => {
         html += `
-        <div class="file-item" style="background: rgba(255,255,255,0.02); margin-bottom: 0.5rem; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; border-left: 2px solid #10b981;">
+        <div class="file-item" data-name="${f.file_name.replace(/"/g, '&quot;')}" data-tags="${(f.tags || '').replace(/"/g, '&quot;')}" style="background: rgba(255,255,255,0.02); margin-bottom: 0.5rem; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; border-left: 2px solid #10b981;">
             <div>
                 <strong>${f.file_name}</strong><br>
                 <small style="color:var(--text-muted)">${isAdmin ? `${f.visibility} • ` : ''}Uploaded by: ${f.uploaded_by || 'admin'}</small>
+                ${f.tags ? `<br><small style="color: var(--primary); font-weight:600; font-size:0.75rem;">${f.tags.split(',').map(t => t.trim()).join(' ')}</small>` : ''}
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <a href="${normalizeFileUrl(f.file_url)}" target="_blank" class="download-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Download</a>
@@ -642,6 +1005,18 @@ window.deleteFile = function(id) {
 
 // --- ADMIN DASHBOARD LOGIC ---
 function setupAdminListeners() {
+    // Show admin subject
+    const user = getSavedUser();
+    const subjectLabel = document.getElementById('adminSubjectLabel');
+    if (subjectLabel && user) {
+        const name = user.name || user.username || 'Admin';
+        const subject = user.subject || '';
+        subjectLabel.innerHTML = `Logged in as <strong style="color: var(--text-main);">${name}</strong>` + (subject ? ` &mdash; <span style="color: #f43f5e; font-weight: 600;">${subject}</span>` : '');
+    }
+    
+    // Load dynamic divisions for chat room select
+    if (typeof loadChatDivisions === 'function') loadChatDivisions();
+    
     const bulkRegForm = document.getElementById('bulkRegForm');
     const uploadForm = document.getElementById('uploadForm');
     const musterForm = document.getElementById('musterForm');
@@ -697,6 +1072,13 @@ function setupAdminListeners() {
             if (folderInput && folderInput.value) {
                 formData.append('academic_year', folderInput.value);
             }
+            
+            // Pass the logged-in admin's subject/course so parsed marks are linked to it
+            const currentUser = getSavedUser();
+            if (currentUser && currentUser.subject) {
+                formData.append('course', currentUser.subject);
+            }
+            
             formData.append('file', document.getElementById('musterFile').files[0]);
 
             try {
@@ -791,6 +1173,11 @@ function setupAdminListeners() {
             formData.append('visibility', document.getElementById('visibility').value);
             formData.append('file', document.getElementById('fileInput').files[0]);
             
+            const tagsInput = document.getElementById('materialTags');
+            if (tagsInput) {
+                formData.append('tags', tagsInput.value.trim());
+            }
+            
             const user = getSavedUser();
             if (user) {
                 formData.append('uploaded_by', user.username || user.enrollment_no);
@@ -816,6 +1203,11 @@ function setupAdminListeners() {
                 alertBox.innerText = 'Failed to upload file';
             }
         });
+    }
+
+    // Auto-join first division room in Admin chat console
+    if (typeof joinAdminChatRoom === 'function' && document.getElementById('chatDivisionSelect')) {
+        joinAdminChatRoom();
     }
 }
 
@@ -886,14 +1278,14 @@ async function loadMainDirectory() {
                     const divId = yearId + '-div-' + div;
                     html += `
                     <div style="margin-bottom: 0.5rem; background: rgba(255,255,255,0.02); border-radius: 6px; overflow: hidden;">
-                        <div style="padding: 0.7rem 1rem; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #6366f1;">
+                        <div style="padding: 0.7rem 1rem; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #f43f5e;">
                             <span onclick="document.getElementById('${divId}').style.display = document.getElementById('${divId}').style.display === 'none' ? 'grid' : 'none'" 
                                   style="font-weight: 600; cursor: pointer; flex: 1;">
                                 📂 Division ${div} <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">${students.length} Students</span>
                             </span>
                             <div style="display: flex; gap: 0.5rem;">
-                                <button onclick="openDivisionMarks('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: #6366f1;">Enter Marks</button>
-                                <button onclick="openDivisionAttendance('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: #10b981;">Attendance</button>
+                                <button onclick="openDivisionMarks('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: linear-gradient(135deg, #f43f5e, #e11d48);">Enter Marks</button>
+                                <button onclick="openDivisionAttendance('${div}')" class="btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; background: linear-gradient(135deg, #fb923c, #ea580c);">Attendance</button>
                             </div>
                         </div>
                         <div id="${divId}" style="display: none; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.5rem; padding: 0.7rem 1rem;">`;
@@ -990,15 +1382,99 @@ let currentAttendanceStudents = [];
 let currentAttendanceStatus = {};
 let currentAttendanceDivision = '';
 
-function openDivisionAttendance(division) {
+async function openDivisionAttendance(division) {
     currentAttendanceDivision = division;
     document.getElementById('attendanceModalTitle').innerText = `Attendance - Division ${division}`;
     document.getElementById('attendanceDateInput').value = new Date().toISOString().split('T')[0];
     document.getElementById('attendanceDivisionInput').value = division;
-    document.getElementById('attendanceStartTime').value = '10:30';
-    document.getElementById('attendanceEndTime').value = '11:30';
-    document.getElementById('attendanceCustomStart').value = '';
-    document.getElementById('attendanceCustomEnd').value = '';
+    
+    let defaultStart = '10:30';
+    let defaultEnd = '11:30';
+    
+    // Smart Attendance Time Logic
+    try {
+        const res = await fetch(`${API_BASE}/admin/getSchedule`);
+        const data = await res.json();
+        if (data.success) {
+            const user = getSavedUser();
+            const adminSubject = (user && user.role === 'admin') ? user.subject : '';
+            const now = new Date();
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const currentDay = days[now.getDay()];
+            const currentTimeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            
+            // Filter schedules for this division, subject, and day
+            let todaysLectures = data.schedules.filter(s => 
+                s.day === currentDay && 
+                s.division === division && 
+                (!adminSubject || s.subject === adminSubject)
+            );
+            
+            if (todaysLectures.length > 0) {
+                todaysLectures.sort((a, b) => a.time_slot.localeCompare(b.time_slot));
+                
+                // Merge continuous lectures
+                let mergedLectures = [];
+                for (let i = 0; i < todaysLectures.length; i++) {
+                    if (mergedLectures.length > 0) {
+                        let last = mergedLectures[mergedLectures.length - 1];
+                        let lastEnd = last.time_slot.split('-')[1];
+                        let currStart = todaysLectures[i].time_slot.split('-')[0];
+                        if (lastEnd === currStart && last.subject === todaysLectures[i].subject) {
+                            last.time_slot = last.time_slot.split('-')[0] + '-' + todaysLectures[i].time_slot.split('-')[1];
+                            continue;
+                        }
+                    }
+                    mergedLectures.push({...todaysLectures[i]});
+                }
+                
+                let selectedLecture = null;
+                for (let i = 0; i < mergedLectures.length; i++) {
+                    let [start, end] = mergedLectures[i].time_slot.split('-');
+                    if (currentTimeStr >= start && currentTimeStr <= end) {
+                        selectedLecture = mergedLectures[i];
+                        break; // Found ongoing
+                    } else if (currentTimeStr > end) {
+                        selectedLecture = mergedLectures[i]; // Keep updating to get the closest ended
+                    } else if (currentTimeStr < start && !selectedLecture) {
+                        selectedLecture = mergedLectures[i];
+                        break; // Fallback to first upcoming
+                    }
+                }
+                
+                if (selectedLecture) {
+                    let [start, end] = selectedLecture.time_slot.split('-');
+                    defaultStart = start;
+                    defaultEnd = end;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Smart attendance time error:", e);
+    }
+
+    const startSelect = document.getElementById('attendanceStartTime');
+    const endSelect = document.getElementById('attendanceEndTime');
+    
+    if (startSelect && endSelect) {
+        const startOpt = Array.from(startSelect.options).find(o => o.value === defaultStart);
+        const endOpt = Array.from(endSelect.options).find(o => o.value === defaultEnd);
+        
+        if (startOpt) {
+            startSelect.value = defaultStart;
+            document.getElementById('attendanceCustomStart').value = '';
+        } else {
+            document.getElementById('attendanceCustomStart').value = defaultStart;
+        }
+        
+        if (endOpt) {
+            endSelect.value = defaultEnd;
+            document.getElementById('attendanceCustomEnd').value = '';
+        } else {
+            document.getElementById('attendanceCustomEnd').value = defaultEnd;
+        }
+    }
+    
     document.getElementById('attendanceOnceAlert').style.display = 'none';
     document.getElementById('attendanceModal').style.display = 'flex';
     loadAttendanceList(division);
@@ -1085,13 +1561,18 @@ async function saveDivisionAttendance() {
         return;
     }
 
+    const currentUser = getSavedUser();
+    const adminSubject = (currentUser && currentUser.role === 'admin') ? currentUser.subject : 'Physics';
+
     const attendanceRecords = Object.entries(currentAttendanceStatus).map(([enrollment_no, present]) => ({
         enrollment_no,
         date,
         status: present ? 'Present' : 'Absent',
         division: currentAttendanceDivision,
         session_start: start,
-        session_end: end
+        session_end: end,
+        subject: adminSubject,
+        type: 'Lecture'
     }));
 
     try {
@@ -1111,7 +1592,24 @@ async function saveDivisionAttendance() {
         alertBox.innerText = `Saved ${attendanceRecords.length} attendance records for division ${currentAttendanceDivision}.`;
         setTimeout(closeAttendanceModal, 1200);
     } catch (err) {
-        console.error(err);
+        console.error('Attendance fetch failed, trying local DB fallback:', err);
+        
+        // If offline or network fails, save records locally to IndexedDB for background synchronization
+        if (eduSyncDB) {
+            try {
+                for (const r of attendanceRecords) {
+                    await eduSyncDB.addAttendance(r.enrollment_no, r.date, r.status, r.division);
+                }
+                alertBox.style.display = 'block';
+                alertBox.className = 'alert success';
+                alertBox.innerText = `Saved ${attendanceRecords.length} records locally (Offline Mode).`;
+                setTimeout(closeAttendanceModal, 2000);
+                return;
+            } catch (localErr) {
+                console.error('Failed to save attendance to local IndexedDB:', localErr);
+            }
+        }
+
         alertBox.style.display = 'block';
         alertBox.className = 'alert error';
         alertBox.innerText = err.message || 'Attendance save failed';
@@ -1190,7 +1688,17 @@ window.openStudentModal = async function(enrollment_no, name) {
         const attRes = await fetch(`${API_BASE}/student/getAttendance/${enrollment_no}`);
         const attData = await attRes.json();
         if(attData.success) {
-            document.getElementById('modalAttendance').innerText = `${attData.percentage}%`;
+            let percentage = attData.percentage;
+            let displayStr = `${percentage}%`;
+            const currentUser = getSavedUser();
+            if (currentUser && currentUser.role === 'admin' && currentUser.subject) {
+                const filteredAtt = attData.attendance.filter(a => a.subject === currentUser.subject);
+                const total = filteredAtt.length;
+                const present = filteredAtt.filter(a => a.status === 'Present').length;
+                const subjPercent = total === 0 ? 0 : Math.round((present / total) * 100);
+                displayStr = `${subjPercent}% (${present}/${total} sessions in ${currentUser.subject})`;
+            }
+            document.getElementById('modalAttendance').innerText = displayStr;
         }
     } catch(e) {
         document.getElementById('modalAttendance').innerText = 'Error';
@@ -1200,11 +1708,18 @@ window.openStudentModal = async function(enrollment_no, name) {
         const marksRes = await fetch(`${API_BASE}/student/getMarks/${enrollment_no}`);
         const marksData = await marksRes.json();
         if(marksData.success) {
-            if(marksData.marks.length === 0) {
-                document.getElementById('modalMarksList').innerHTML = '<p style="font-size:0.9rem; color:var(--text-muted)">No marks uploaded yet.</p>';
+            const currentUser = getSavedUser();
+            const adminSubject = (currentUser && currentUser.role === 'admin') ? currentUser.subject : null;
+            let filteredMarks = marksData.marks;
+            if (adminSubject) {
+                filteredMarks = marksData.marks.filter(m => (m.course || 'Physics') === adminSubject);
+            }
+            
+            if(filteredMarks.length === 0) {
+                document.getElementById('modalMarksList').innerHTML = `<p style="font-size:0.9rem; color:var(--text-muted)">No marks uploaded yet${adminSubject ? ' for ' + adminSubject : ''}.</p>`;
             } else {
                 let mHtml = '<table style="width:100%; font-size:0.9rem; text-align:left;">';
-                marksData.marks.forEach(m => {
+                filteredMarks.forEach(m => {
                     let displayMark = m.marks;
                     if(m.subject === 'Lab Practical' && displayMark.startsWith('[')) {
                         try {
@@ -1240,11 +1755,16 @@ window.openStudentModal = async function(enrollment_no, name) {
             } else {
                 let aHtml = '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
                 assignData.assignments.forEach(a => {
+                    const gradeStr = a.grade ? `Grade: <strong style="color:var(--primary);">${a.grade}</strong>${a.feedback ? ` (${a.feedback})` : ''}` : '<span style="color:#fb923c;">Ungraded</span>';
                     aHtml += `
-                        <div style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;">
+                        <div style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px; position:relative;">
                             <strong style="font-size: 0.9rem;">${a.title}</strong><br>
-                            <span style="font-size: 0.75rem; color: var(--text-muted);">${new Date(a.submitted_at).toLocaleDateString()}</span>
-                            <a href="${normalizeFileUrl(a.file_url)}" target="_blank" class="download-btn" style="float: right; padding: 0.2rem 0.5rem; font-size: 0.8rem; margin-top: -1.5rem;">View</a>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">${new Date(a.submitted_at).toLocaleDateString()}</span><br>
+                            <span style="font-size: 0.8rem;">${gradeStr}</span>
+                            <div style="float: right; margin-top: -1.75rem; display:flex; gap:0.25rem;">
+                                <a href="${normalizeFileUrl(a.file_url)}" target="_blank" class="download-btn" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">View</a>
+                                <button onclick="openGradingModal(${a.id}, '${a.title.replace(/'/g, "\\'")}', '${enrollment_no}')" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; background:linear-gradient(135deg, #10b981, #059669); border:none; width:auto;">Grade</button>
+                            </div>
                         </div>`;
                 });
                 aHtml += '</div>';
@@ -1265,11 +1785,13 @@ if (modalMarksForm) {
         const marks = document.getElementById('modalMarksValue').value;
         const alertBox = document.getElementById('modalMarksAlert');
         
+        const currentUser = getSavedUser();
+        const course = (currentUser && currentUser.role === 'admin') ? currentUser.subject : 'Physics';
         try {
             const res = await fetch(`${API_BASE}/admin/updateMarks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enrollment_no, subject, marks })
+                body: JSON.stringify({ enrollment_no, subject, marks, course })
             });
             const data = await res.json();
             
@@ -1285,6 +1807,22 @@ if (modalMarksForm) {
                 alertBox.innerText = data.message || 'Update failed';
             }
         } catch(err) {
+            console.error('Marks update fetch failed, trying local DB fallback:', err);
+            
+            // Save marks entry locally in IndexedDB if client is offline or network fails
+            if (eduSyncDB) {
+                try {
+                    await eduSyncDB.addMarks(enrollment_no, subject, marks, course);
+                    alertBox.style.display = 'block';
+                    alertBox.className = 'alert success';
+                    alertBox.innerText = 'Marks saved locally (Offline Mode)!';
+                    document.getElementById('modalMarksValue').value = '';
+                    return;
+                } catch (localErr) {
+                    console.error('Failed to save single marks entry to local IndexedDB:', localErr);
+                }
+            }
+
             alertBox.style.display = 'block';
             alertBox.className = 'alert error';
             alertBox.innerText = 'Failed to update marks';
@@ -1325,8 +1863,10 @@ window.loadDivisionMarksTable = async function() {
         const data = await res.json();
         const marksMap = {}; 
         if(data.success) {
+            const currentUser = getSavedUser();
+            const adminSubject = (currentUser && currentUser.role === 'admin') ? currentUser.subject : 'Physics';
             data.marks.forEach(m => {
-                if(m.subject === subject) {
+                if(m.subject === subject && (m.course || 'Physics') === adminSubject) {
                     marksMap[m.enrollment_no] = m.marks;
                 }
             });
@@ -1460,11 +2000,13 @@ window.saveDivisionMarks = async function() {
         });
     }
     
+    const currentUser = getSavedUser();
+    const course = (currentUser && currentUser.role === 'admin') ? currentUser.subject : 'Physics';
     try {
         const res = await fetch(`${API_BASE}/admin/bulkUpdateMarks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates })
+            body: JSON.stringify({ updates, course })
         });
         const data = await res.json();
         if(data.success) {
@@ -1475,6 +2017,22 @@ window.saveDivisionMarks = async function() {
             alertBox.style.color = '#ef4444';
         }
     } catch(e) {
+        console.error('Bulk marks update fetch failed, trying local DB fallback:', e);
+        
+        // Save bulk marks entries locally to IndexedDB if offline or server is unreachable
+        if (eduSyncDB) {
+            try {
+                for (const u of updates) {
+                    await eduSyncDB.addMarks(u.enrollment_no, u.subject, u.marks, course);
+                }
+                alertBox.innerText = 'Saved locally (Offline Mode)!';
+                alertBox.style.color = '#38bdf8'; // sky blue for offline success info
+                return;
+            } catch (localErr) {
+                console.error('Failed to save bulk marks to local IndexedDB:', localErr);
+            }
+        }
+
         alertBox.innerText = 'Server Error';
         alertBox.style.color = '#ef4444';
     }
@@ -1628,6 +2186,11 @@ if(materialForm) {
         const user = getSavedUser();
         if(user) formData.append('uploaded_by', user.username || user.enrollment_no);
         
+        const tagsInput = document.getElementById('materialTags');
+        if (tagsInput) {
+            formData.append('tags', tagsInput.value.trim());
+        }
+        
         try {
             const res = await fetch(`${API_BASE}/admin/uploadFile`, {
                 method: 'POST',
@@ -1652,3 +2215,1381 @@ if(materialForm) {
         }
     });
 }
+
+// =======================================
+// FACE RECOGNITION SYSTEM
+// =======================================
+
+let faceModelsLoaded = false;
+let faceLoginStream = null;
+let faceRegStream = null;
+let faceDetectionInterval = null;
+
+async function loadFaceModels() {
+    if (faceModelsLoaded) return true;
+    if (typeof faceapi === 'undefined') {
+        console.warn('face-api.js not loaded');
+        return false;
+    }
+    try {
+        const MODEL_URL = APP_ORIGIN + '/models';
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+        faceModelsLoaded = true;
+        console.log('✅ Face detection models loaded');
+        return true;
+    } catch (err) {
+        console.error('Failed to load face models:', err);
+        return false;
+    }
+}
+
+// --- FACE LOGIN ---
+window.openFaceLoginModal = async function() {
+    const modal = document.getElementById('faceLoginModal');
+    const statusEl = document.getElementById('faceLoginStatus');
+    const alertBox = document.getElementById('faceLoginAlert');
+    const scanBtn = document.getElementById('faceLoginScanBtn');
+    const video = document.getElementById('faceLoginVideo');
+    
+    modal.style.display = 'flex';
+    alertBox.style.display = 'none';
+    scanBtn.disabled = true;
+    statusEl.innerText = 'Loading face detection models...';
+    
+    const loaded = await loadFaceModels();
+    if (!loaded) {
+        statusEl.innerText = 'Failed to load face models. Please try again.';
+        return;
+    }
+    
+    statusEl.innerText = 'Starting camera...';
+    
+    try {
+        faceLoginStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } 
+        });
+        video.srcObject = faceLoginStream;
+        await video.play();
+        statusEl.innerText = 'Position your face in the frame and click "Scan & Login"';
+        scanBtn.disabled = false;
+        
+        // Start live face detection overlay
+        startFaceOverlay(video, document.getElementById('faceLoginCanvas'));
+    } catch (err) {
+        statusEl.innerText = 'Camera access denied. Please allow camera permissions.';
+        console.error(err);
+    }
+};
+
+function startFaceOverlay(video, canvas) {
+    if (faceDetectionInterval) clearInterval(faceDetectionInterval);
+    
+    faceDetectionInterval = setInterval(async () => {
+        if (!video.srcObject || video.paused) return;
+        
+        const displaySize = { width: video.videoWidth, height: video.videoHeight };
+        faceapi.matchDimensions(canvas, displaySize);
+        
+        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks();
+        
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        resizedDetections.forEach(det => {
+            const box = det.detection.box;
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            
+            // Draw face landmarks as dots
+            det.landmarks.positions.forEach(pt => {
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 1.5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fb923c';
+                ctx.fill();
+            });
+        });
+    }, 200);
+}
+
+window.closeFaceLoginModal = function() {
+    document.getElementById('faceLoginModal').style.display = 'none';
+    if (faceLoginStream) {
+        faceLoginStream.getTracks().forEach(t => t.stop());
+        faceLoginStream = null;
+    }
+    if (faceDetectionInterval) {
+        clearInterval(faceDetectionInterval);
+        faceDetectionInterval = null;
+    }
+    const canvas = document.getElementById('faceLoginCanvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+};
+
+window.attemptFaceLogin = async function() {
+    const video = document.getElementById('faceLoginVideo');
+    const statusEl = document.getElementById('faceLoginStatus');
+    const alertBox = document.getElementById('faceLoginAlert');
+    const scanBtn = document.getElementById('faceLoginScanBtn');
+    
+    scanBtn.disabled = true;
+    statusEl.innerText = 'Scanning face...';
+    alertBox.style.display = 'none';
+    
+    try {
+        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        
+        if (!detection) {
+            statusEl.innerText = 'No face detected. Please position your face clearly.';
+            scanBtn.disabled = false;
+            return;
+        }
+        
+        statusEl.innerText = 'Face captured! Matching...';
+        
+        const descriptor = Array.from(detection.descriptor);
+        
+        const res = await fetch(`${API_BASE}/auth/faceLogin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ descriptor })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success && data.multiple) {
+            // Multiple matches — show account picker
+            statusEl.innerText = 'Multiple accounts detected!';
+            alertBox.style.display = 'none';
+            
+            let pickerHtml = `<div style="margin-top: 1rem; text-align: left;">
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem; text-align: center;">${data.message}</p>`;
+            
+            data.matches.forEach((m, i) => {
+                const roleColor = m.role === 'admin' ? '#f43f5e' : '#fb923c';
+                const roleLabel = m.role === 'admin' ? 'ADMIN' : 'STUDENT';
+                const confidence = Math.round((1 - m.distance) * 100);
+                pickerHtml += `
+                <button onclick="selectFaceAccount(${i})" 
+                    style="width: 100%; padding: 0.8rem 1rem; margin-bottom: 0.5rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; color: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', sans-serif; transition: all 0.3s; text-align: left;"
+                    onmouseover="this.style.background='rgba(244,63,94,0.1)'; this.style.borderColor='rgba(244,63,94,0.3)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.04)'; this.style.borderColor='rgba(255,255,255,0.08)'">
+                    <div>
+                        <span style="font-weight: 600; font-size: 0.95rem;">${m.displayName}</span>
+                        <span style="display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 9999px; background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}33; margin-left: 0.5rem; font-weight: 700;">${roleLabel}</span>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">${confidence}% match</span>
+                </button>`;
+            });
+            
+            pickerHtml += `</div>`;
+            
+            // Store matches globally for selection
+            window._faceMatches = data.matches;
+            
+            // Display picker below the scan button
+            let pickerContainer = document.getElementById('faceAccountPicker');
+            if (!pickerContainer) {
+                pickerContainer = document.createElement('div');
+                pickerContainer.id = 'faceAccountPicker';
+                scanBtn.parentNode.parentNode.insertBefore(pickerContainer, alertBox);
+            }
+            pickerContainer.innerHTML = pickerHtml;
+            scanBtn.style.display = 'none';
+            
+        } else if (data.success) {
+            closeFaceLoginModal();
+            const role = data.role;
+            const userData = { ...data.user, role };
+            saveUserSession(userData, false);
+            window.location.href = role === 'admin' ? 'admin.html' : 'dashboard.html';
+        } else {
+            alertBox.style.display = 'block';
+            alertBox.className = 'alert error';
+            alertBox.innerText = data.message;
+            statusEl.innerText = 'Try again or use password login.';
+            scanBtn.disabled = false;
+        }
+    } catch (err) {
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert error';
+        alertBox.innerText = 'Error during face scan. Please try again.';
+        statusEl.innerText = 'Scan failed.';
+        scanBtn.disabled = false;
+        console.error(err);
+    }
+};
+
+window.selectFaceAccount = function(index) {
+    const match = window._faceMatches[index];
+    if (!match) return;
+    
+    closeFaceLoginModal();
+    const userData = { ...match.user, role: match.role };
+    saveUserSession(userData, false);
+    window.location.href = match.role === 'admin' ? 'admin.html' : 'dashboard.html';
+};
+
+// --- FACE REGISTRATION ---
+window.startFaceRegistration = async function() {
+    const video = document.getElementById('faceRegVideo');
+    const statusEl = document.getElementById('faceRegStatus');
+    const alertBox = document.getElementById('faceRegAlert');
+    const startBtn = document.getElementById('faceRegStartBtn');
+    const captureBtn = document.getElementById('faceRegCaptureBtn');
+    const stopBtn = document.getElementById('faceRegStopBtn');
+    
+    alertBox.style.display = 'none';
+    statusEl.innerHTML = '<span style="color: #fbbf24;">Loading face models...</span>';
+    
+    const loaded = await loadFaceModels();
+    if (!loaded) {
+        statusEl.innerHTML = '<span style="color: #ef4444;">Failed to load face models.</span>';
+        return;
+    }
+    
+    try {
+        faceRegStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } 
+        });
+        video.srcObject = faceRegStream;
+        video.style.display = 'block';
+        await video.play();
+        
+        startBtn.style.display = 'none';
+        captureBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'inline-flex';
+        statusEl.innerHTML = '<span style="color: #6ee7b7;">Camera active. Position your face and click "Capture & Register".</span>';
+        
+        startFaceOverlay(video, document.getElementById('faceRegCanvas'));
+    } catch (err) {
+        statusEl.innerHTML = '<span style="color: #ef4444;">Camera access denied.</span>';
+        console.error(err);
+    }
+};
+
+window.stopFaceRegistration = function() {
+    const video = document.getElementById('faceRegVideo');
+    if (faceRegStream) {
+        faceRegStream.getTracks().forEach(t => t.stop());
+        faceRegStream = null;
+    }
+    video.style.display = 'none';
+    if (faceDetectionInterval) {
+        clearInterval(faceDetectionInterval);
+        faceDetectionInterval = null;
+    }
+    const canvas = document.getElementById('faceRegCanvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    
+    document.getElementById('faceRegStartBtn').style.display = 'inline-flex';
+    document.getElementById('faceRegCaptureBtn').style.display = 'none';
+    document.getElementById('faceRegStopBtn').style.display = 'none';
+    document.getElementById('faceRegStatus').innerHTML = '';
+};
+
+window.captureFaceRegistration = async function() {
+    const video = document.getElementById('faceRegVideo');
+    const statusEl = document.getElementById('faceRegStatus');
+    const alertBox = document.getElementById('faceRegAlert');
+    const captureBtn = document.getElementById('faceRegCaptureBtn');
+    
+    captureBtn.disabled = true;
+    statusEl.innerHTML = '<span style="color: #fbbf24;">Scanning face...</span>';
+    
+    try {
+        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        
+        if (!detection) {
+            statusEl.innerHTML = '<span style="color: #ef4444;">No face detected. Try again.</span>';
+            captureBtn.disabled = false;
+            return;
+        }
+        
+        const descriptor = Array.from(detection.descriptor);
+        const user = getSavedUser();
+        
+        if (!user) {
+            statusEl.innerHTML = '<span style="color: #ef4444;">Not logged in.</span>';
+            captureBtn.disabled = false;
+            return;
+        }
+        
+        const id = user.enrollment_no || user.username;
+        const role = user.role;
+        
+        statusEl.innerHTML = '<span style="color: #fbbf24;">Saving face data...</span>';
+        
+        const res = await fetch(`${API_BASE}/auth/registerFace`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, role, descriptor })
+        });
+        
+        const data = await res.json();
+        
+        alertBox.style.display = 'block';
+        if (data.success) {
+            alertBox.className = 'alert success';
+            alertBox.innerText = data.message;
+            statusEl.innerHTML = '<span style="color: #6ee7b7;">✅ Face registered successfully!</span>';
+            stopFaceRegistration();
+        } else {
+            alertBox.className = 'alert error';
+            alertBox.innerText = data.message;
+            statusEl.innerHTML = '<span style="color: #ef4444;">Registration failed.</span>';
+        }
+        captureBtn.disabled = false;
+    } catch (err) {
+        alertBox.style.display = 'block';
+        alertBox.className = 'alert error';
+        alertBox.innerText = 'Error during face registration.';
+        captureBtn.disabled = false;
+        console.error(err);
+    }
+};
+
+// ==========================================
+// GRAPHICAL TIMETABLE & SCHEDULER SYSTEM
+// ==========================================
+let timetableMode = 'general'; // 'general' or 'attendance'
+let activeSchedules = [];
+
+// Clean up and determine division/type gradient styles dynamically via string hashing
+function getScheduleGradient(division, type, filterMode, customColor = null) {
+    if (customColor && customColor.trim() !== '') {
+        return customColor;
+    }
+    
+    const cleanDiv = (division || 'Q').toUpperCase().trim();
+    const cleanType = (type || 'Theory').toLowerCase();
+    
+    // Division-specific View: distinguish by Session Type!
+    if (filterMode && filterMode !== 'ALL') {
+        if (cleanType.includes('lab')) return 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'; // Cyan
+        if (cleanType.includes('tut')) return 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'; // Purple
+        return 'linear-gradient(135deg, #10b981 0%, #059669 100%)'; // Green (Theory)
+    }
+    
+    // General / Merged View: distinguish Divisions by Color!
+    let hash = 0;
+    for (let i = 0; i < cleanDiv.length; i++) {
+        hash = cleanDiv.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const baseHues = [
+        12,   // Coral / Sunset Rose
+        138,  // Emerald / Lime Green
+        188,  // Ocean Blue / Cyan
+        268,  // Deep Purple / Violet
+        322,  // Magenta / Neon Pink
+        38,   // Warm Amber / Gold
+        215,  // Sky Blue / Royal Blue
+        162   // Mint Green / Teal
+    ];
+    
+    const idx = Math.abs(hash) % baseHues.length;
+    const hue = baseHues[idx];
+    return `linear-gradient(135deg, hsl(${hue}, 75%, 45%) 0%, hsl(${(hue + 30) % 360}, 85%, 35%) 100%)`;
+}
+
+// Dynamically fetch unique divisions from database and populate filters
+async function populateTimetableDivisions() {
+    try {
+        const res = await fetch(`${API_BASE}/admin/getAllStudents`);
+        const data = await res.json();
+        
+        let divisions = [];
+        if (data.success && data.students) {
+            const unique = new Set();
+            data.students.forEach(s => {
+                if (s.division) unique.add(s.division.trim().toUpperCase());
+            });
+            divisions = Array.from(unique).sort();
+        }
+        
+        // Fallback to active testing divisions Q and R
+        if (divisions.length === 0) {
+            divisions = ['Q', 'R'];
+        }
+        
+        // Populate timetable view filter
+        const filterDropdown = document.getElementById('timetableDivFilter');
+        const currentFilterVal = filterDropdown.value || 'ALL';
+        
+        filterDropdown.innerHTML = `<option value="ALL">All Divisions (Merged View)</option>`;
+        divisions.forEach(div => {
+            filterDropdown.innerHTML += `<option value="${div}">Division ${div} Only</option>`;
+        });
+        
+        if (divisions.includes(currentFilterVal) || currentFilterVal === 'ALL') {
+            filterDropdown.value = currentFilterVal;
+        } else {
+            filterDropdown.value = 'ALL';
+        }
+        
+        // Populate slot editor division select option
+        const editorDropdown = document.getElementById('slotEditorDiv');
+        const currentEditorVal = editorDropdown.value;
+        editorDropdown.innerHTML = '';
+        
+        divisions.forEach(div => {
+            editorDropdown.innerHTML += `<option value="${div}">Division ${div}</option>`;
+        });
+        editorDropdown.innerHTML += `<option value="NEW_CUSTOM">+ Add Custom Division...</option>`;
+        
+        if (divisions.includes(currentEditorVal)) {
+            editorDropdown.value = currentEditorVal;
+        } else if (divisions.length > 0) {
+            editorDropdown.value = divisions[0];
+        }
+        
+        // Event listener for adding custom divisions on-the-fly
+        editorDropdown.onchange = () => {
+            if (editorDropdown.value === 'NEW_CUSTOM') {
+                const customName = prompt('Enter custom division letter/name (e.g. S):');
+                if (customName && customName.trim() !== '') {
+                    const cleanName = customName.trim().toUpperCase();
+                    const opt = document.createElement('option');
+                    opt.value = cleanName;
+                    opt.innerText = `Division ${cleanName}`;
+                    editorDropdown.insertBefore(opt, editorDropdown.lastElementChild);
+                    editorDropdown.value = cleanName;
+                } else {
+                    editorDropdown.value = divisions[0] || 'Q';
+                }
+            }
+        };
+    } catch(err) {
+        console.error('Error populating dynamic timetable divisions:', err);
+    }
+}
+
+// Open Timetable from General Admin dashboard
+window.openGeneralTimetable = async function() {
+    timetableMode = 'general';
+    document.getElementById('timetableSelectionHint').style.display = 'none';
+    document.getElementById('timetableModeNotice').innerText = '💡 Select a specific division from the dropdown filter to schedule or edit slots graphically.';
+    await populateTimetableDivisions();
+    document.getElementById('timetableModal').style.display = 'flex';
+    document.getElementById('timetableDivFilter').value = 'ALL';
+    loadTimetableData();
+};
+
+// Open Timetable from Attendance feature
+window.openTimetableFromAttendance = async function() {
+    timetableMode = 'attendance';
+    document.getElementById('timetableSelectionHint').style.display = 'inline-block';
+    document.getElementById('timetableModeNotice').innerText = '🎯 Click any scheduled slot block below to automatically autofill the attendance details!';
+    await populateTimetableDivisions();
+    
+    // Set filter to match the division we are currently preparing attendance for
+    const activeDiv = currentAttendanceDivision || 'Q';
+    document.getElementById('timetableDivFilter').value = activeDiv;
+    
+    document.getElementById('timetableModal').style.display = 'flex';
+    loadTimetableData();
+};
+
+window.closeTimetableModal = function() {
+    document.getElementById('timetableModal').style.display = 'none';
+};
+
+window.loadTimetableData = async function() {
+    try {
+        const res = await fetch(`${API_BASE}/admin/getSchedule`);
+        const data = await res.json();
+        if (data.success) {
+            activeSchedules = data.schedules;
+            renderTimetableGrid();
+        }
+    } catch(err) {
+        console.error('Error fetching schedule data:', err);
+    }
+};
+
+window.renderTimetableGrid = function() {
+    const filter = document.getElementById('timetableDivFilter').value;
+    const tbody = document.getElementById('timetableGridBody');
+    tbody.innerHTML = '';
+    
+    // Restrict timetable views to the logged-in admin's specific assigned subject
+    const user = getSavedUser();
+    const adminSubject = (user && user.role === 'admin') ? user.subject : '';
+    
+    const slots = [
+        { label: '10:30 AM - 11:30 AM', time: '10:30-11:30', type: 'lecture' },
+        { label: '11:30 AM - 12:30 PM', time: '11:30-12:30', type: 'lecture' },
+        { label: '12:30 PM - 01:00 PM', time: '12:30-13:00', type: 'lunch' },
+        { label: '01:00 PM - 02:00 PM', time: '13:00-14:00', type: 'lecture' },
+        { label: '02:00 PM - 03:00 PM', time: '14:00-15:00', type: 'lecture' },
+        { label: '03:00 PM - 03:15 PM', time: '15:00-15:15', type: 'break' },
+        { label: '03:15 PM - 04:15 PM', time: '15:15-16:15', type: 'lecture' },
+        { label: '04:15 PM - 05:15 PM', time: '16:15-17:15', type: 'lecture' }
+    ];
+    
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    slots.forEach(slot => {
+        const tr = document.createElement('tr');
+        tr.style.height = slot.type === 'lecture' ? '90px' : '40px';
+        
+        // Time slot header column
+        const tdTime = document.createElement('td');
+        tdTime.style.background = 'rgba(255, 255, 255, 0.03)';
+        tdTime.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+        tdTime.style.padding = '0.5rem';
+        tdTime.style.borderRadius = '6px';
+        tdTime.innerHTML = `<strong style="font-size: 0.85rem; color: #fda4af; display:block;">${slot.label.split(' - ')[0]}</strong><span style="font-size: 0.75rem; color: var(--text-muted);">${slot.label.split(' - ')[1]}</span>`;
+        tr.appendChild(tdTime);
+        
+        if (slot.type === 'lunch') {
+            const tdBreak = document.createElement('td');
+            tdBreak.setAttribute('colspan', '5');
+            tdBreak.style.background = 'linear-gradient(90deg, rgba(244,63,94,0.08) 0%, rgba(251,146,60,0.08) 50%, rgba(244,63,94,0.08) 100%)';
+            tdBreak.style.border = '1px dashed rgba(244, 63, 94, 0.2)';
+            tdBreak.style.borderRadius = '6px';
+            tdBreak.style.fontSize = '0.85rem';
+            tdBreak.style.fontWeight = '600';
+            tdBreak.style.color = '#fecdd3';
+            tdBreak.innerHTML = '☕ 12:30 - 1:00 PM &nbsp;&bull;&nbsp; LUNCH BREAK &nbsp;&bull;&nbsp; REST TIME';
+            tr.appendChild(tdBreak);
+        } else if (slot.type === 'break') {
+            const tdBreak = document.createElement('td');
+            tdBreak.setAttribute('colspan', '5');
+            tdBreak.style.background = 'linear-gradient(90deg, rgba(124,58,237,0.08) 0%, rgba(6,182,212,0.08) 50%, rgba(124,58,237,0.08) 100%)';
+            tdBreak.style.border = '1px dashed rgba(124, 58, 237, 0.2)';
+            tdBreak.style.borderRadius = '6px';
+            tdBreak.style.fontSize = '0.82rem';
+            tdBreak.style.fontWeight = '600';
+            tdBreak.style.color = '#ddd6fe';
+            tdBreak.innerHTML = '🍪 3:00 - 3:15 PM &nbsp;&bull;&nbsp; SHORT BREAK';
+            tr.appendChild(tdBreak);
+        } else {
+            // Lecture row columns for days
+            days.forEach(day => {
+                const td = document.createElement('td');
+                td.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+                td.style.borderRadius = '6px';
+                td.style.background = 'rgba(255, 255, 255, 0.01)';
+                td.style.position = 'relative';
+                td.style.padding = '4px';
+                td.style.verticalAlign = 'top';
+                
+                // Fetch scheduled items matching day and time_slot
+                let matched = activeSchedules.filter(s => s.day === day && s.time_slot === slot.time);
+                if (adminSubject) {
+                    matched = matched.filter(s => s.subject === adminSubject);
+                }
+                if (filter !== 'ALL') {
+                    matched = matched.filter(s => s.division === filter);
+                }
+                
+                const container = document.createElement('div');
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+                container.style.gap = '4px';
+                container.style.height = '100%';
+                container.style.justifyContent = 'center';
+                
+                if (matched.length > 0) {
+                    matched.forEach(item => {
+                        const block = document.createElement('div');
+                        block.style.background = getScheduleGradient(item.division, item.type, filter, item.color);
+                        block.style.color = 'white';
+                        block.style.borderRadius = '4px';
+                        block.style.padding = '0.35rem 0.5rem';
+                        block.style.fontSize = '0.78rem';
+                        block.style.fontWeight = '600';
+                        block.style.textAlign = 'left';
+                        block.style.cursor = 'pointer';
+                        block.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                        block.style.border = '1px solid rgba(255,255,255,0.15)';
+                        block.setAttribute('draggable', 'true');
+                        block.ondragstart = (e) => {
+                            if (timetableMode !== 'general') {
+                                e.preventDefault();
+                                return;
+                            }
+                            e.dataTransfer.setData('text/plain', JSON.stringify({
+                                item: item,
+                                originDay: day,
+                                originTime: slot.time
+                            }));
+                            block.style.opacity = '0.5';
+                        };
+                        block.ondragend = () => {
+                            block.style.opacity = '1';
+                        };
+                        
+                        block.onclick = (e) => {
+                            e.stopPropagation();
+                            if (timetableMode === 'attendance') {
+                                // AUTO FILL ATTENDANCE FIELDS!
+                                const startPart = slot.time.split('-')[0];
+                                const endPart = slot.time.split('-')[1];
+                                
+                                document.getElementById('attendanceStartTime').value = startPart;
+                                document.getElementById('attendanceEndTime').value = endPart;
+                                document.getElementById('attendanceDivisionInput').value = item.division;
+                                currentAttendanceDivision = item.division;
+                                
+                                // Auto load class grid instantly
+                                loadDivisionAttendance();
+                                closeTimetableModal();
+                            } else {
+                                // EDIT Popover
+                                openSlotEditor(day, slot.time, item);
+                            }
+                        };
+                        
+                        block.innerHTML = `
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:0.8rem; font-weight:700;">${item.subject.replace('Basic Electrical Engineering', 'BEE').replace('Computer Programming', 'Programming').replace('Engineering Graphics', 'Graphics')}</span>
+                                <span style="font-size:0.68rem; background:rgba(0,0,0,0.2); padding:1px 4px; border-radius:3px;">Div ${item.division}</span>
+                            </div>
+                            <div style="font-size:0.7rem; opacity:0.85; margin-top:2px;">
+                                &#128214; ${item.type}
+                            </div>
+                        `;
+                        container.appendChild(block);
+                    });
+                } else {
+                    // Empty Cell visual placeholder
+                    if (timetableMode === 'general') {
+                        td.style.cursor = 'pointer';
+                        td.onmouseover = () => { td.style.background = 'rgba(255,255,255,0.03)'; };
+                        td.onmouseout = () => { td.style.background = 'rgba(255,255,255,0.01)'; };
+                        td.onclick = () => {
+                            if (filter === 'ALL') {
+                                alert('Please select a specific Division filter (A, B, or C) from the filter bar to add a new scheduled slot graphically.');
+                            } else {
+                                openSlotEditor(day, slot.time, null, filter);
+                            }
+                        };
+                    }
+                }
+                
+                // DRAG OVER / LEAVE / DROP events on cells
+                td.ondragover = (e) => {
+                    e.preventDefault();
+                    if (timetableMode === 'general') td.classList.add('drag-over');
+                };
+                td.ondragleave = () => {
+                    td.classList.remove('drag-over');
+                };
+                td.ondrop = async (e) => {
+                    e.preventDefault();
+                    td.classList.remove('drag-over');
+                    if (timetableMode !== 'general') return;
+                    try {
+                        const dataStr = e.dataTransfer.getData('text/plain');
+                        if (!dataStr) return;
+                        const data = JSON.parse(dataStr);
+                        const { item, originDay, originTime } = data;
+                        
+                        if (originDay === day && originTime === slot.time) return;
+                        
+                        // Save slot to new day/time
+                        const saveRes = await fetch(`${API_BASE}/admin/saveSchedule`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                day: day,
+                                time_slot: slot.time,
+                                subject: item.subject,
+                                type: item.type,
+                                division: item.division,
+                                color: item.color
+                            })
+                        });
+                        const saveData = await saveRes.json();
+                        if (saveData.success) {
+                            // Delete old slot
+                            await fetch(`${API_BASE}/admin/saveSchedule`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    day: originDay,
+                                    time_slot: originTime,
+                                    subject: '',
+                                    division: item.division
+                                })
+                            });
+                            loadTimetableData();
+                        } else {
+                            showAppModal('Conflict Detected', saveData.message || 'Clash! Division is already booked.', 'alert');
+                        }
+                    } catch(err) {
+                        console.error('Drag update error:', err);
+                    }
+                };
+                
+                td.appendChild(container);
+                tr.appendChild(td);
+            });
+        }
+        tbody.appendChild(tr);
+    });
+};
+
+// Open the graphical Slot Editor Popover modal
+window.openSlotEditor = function(day, time, existingItem = null, filterDiv = '') {
+    document.getElementById('slotEditorDay').value = day;
+    document.getElementById('slotEditorTime').value = time;
+    
+    const divSelect = document.getElementById('slotEditorDiv');
+    const subjSelect = document.getElementById('slotEditorSubject');
+    
+    // Set header labels
+    document.getElementById('slotEditorTitle').innerText = existingItem ? '🛠️ Edit Class Schedule Slot' : '📅 Schedule New Class Slot';
+    document.getElementById('slotEditorSubtitle').innerText = `${day} at ${time}`;
+    
+    // Lock/Autofill subject if logged in Admin belongs to a specific subject
+    const user = getSavedUser();
+    const adminSubject = (user && user.role === 'admin') ? user.subject : '';
+    
+    if (existingItem) {
+        // Edit mode
+        document.getElementById('slotEditorDivGroup').style.display = 'block';
+        divSelect.value = existingItem.division;
+        subjSelect.value = existingItem.subject;
+        updateSlotEditorTypeOptions();
+        document.getElementById('slotEditorType').value = existingItem.type;
+    } else {
+        // Create mode
+        document.getElementById('slotEditorDivGroup').style.display = 'block';
+        divSelect.value = filterDiv || 'Q';
+        if (adminSubject) {
+            subjSelect.value = adminSubject;
+        } else {
+            subjSelect.value = '';
+        }
+        updateSlotEditorTypeOptions();
+    }
+    
+    // Lock subject selector if adminSubject is active
+    if (adminSubject) {
+        subjSelect.value = adminSubject;
+        subjSelect.disabled = true;
+        subjSelect.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+        subjSelect.style.background = 'rgba(16, 185, 129, 0.05)';
+        subjSelect.style.opacity = '0.7';
+    } else {
+        subjSelect.disabled = false;
+        subjSelect.style.border = '';
+        subjSelect.style.background = '';
+        subjSelect.style.opacity = '1';
+    }
+    
+    // Generate beautiful interactive visual color picker palette
+    const presets = [
+        { name: 'Sunset Coral', value: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)' },
+        { name: 'Emerald Mint', value: 'linear-gradient(135deg, #10b981 0%, #047857 100%)' },
+        { name: 'Ocean Cyan', value: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' },
+        { name: 'Indigo Dream', value: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' },
+        { name: 'Amber Glow', value: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)' },
+        { name: 'Rose Orchid', value: 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)' }
+    ];
+    
+    const paletteContainer = document.getElementById('slotColorPalette');
+    if (paletteContainer) {
+        paletteContainer.innerHTML = '';
+        const selectedColor = existingItem ? (existingItem.color || '') : '';
+        document.getElementById('slotEditorColor').value = selectedColor;
+        
+        presets.forEach(preset => {
+            const circle = document.createElement('div');
+            circle.style.width = '30px';
+            circle.style.height = '30px';
+            circle.style.borderRadius = '50%';
+            circle.style.background = preset.value;
+            circle.style.cursor = 'pointer';
+            circle.style.transition = 'all 0.15s ease';
+            circle.style.border = '2px solid transparent';
+            circle.title = preset.name;
+            
+            if (selectedColor === preset.value) {
+                circle.style.border = '2px solid #ffffff';
+                circle.style.transform = 'scale(1.15)';
+                circle.style.boxShadow = '0 0 12px rgba(255, 255, 255, 0.6)';
+            }
+            
+            circle.onclick = () => {
+                document.getElementById('slotEditorColor').value = preset.value;
+                Array.from(paletteContainer.children).forEach(child => {
+                    child.style.border = '2px solid transparent';
+                    child.style.transform = 'scale(1)';
+                    child.style.boxShadow = 'none';
+                });
+                circle.style.border = '2px solid #ffffff';
+                circle.style.transform = 'scale(1.15)';
+                circle.style.boxShadow = '0 0 12px rgba(255, 255, 255, 0.6)';
+            };
+            
+            paletteContainer.appendChild(circle);
+        });
+    }
+    
+    document.getElementById('slotEditorModal').style.display = 'flex';
+};
+
+window.updateSlotEditorTypeOptions = function() {
+    const subject = document.getElementById('slotEditorSubject').value;
+    const typeSelect = document.getElementById('slotEditorType');
+    typeSelect.innerHTML = '';
+    
+    if (subject === 'Maths') {
+        typeSelect.innerHTML = `
+            <option value="Theory">Theory Session</option>
+            <option value="Tutorial">Tutorial Session</option>
+        `;
+    } else if (subject) {
+        typeSelect.innerHTML = `
+            <option value="Theory">Theory Session</option>
+            <option value="Lab Practical">Lab Practical Session</option>
+        `;
+    } else {
+        typeSelect.innerHTML = `<option value="">-- Choose Subject First --</option>`;
+    }
+};
+
+window.clearSlotEditor = async function() {
+    const day = document.getElementById('slotEditorDay').value;
+    const time = document.getElementById('slotEditorTime').value;
+    const division = document.getElementById('slotEditorDiv').value;
+    
+    if (confirm(`Are you sure you want to clear this scheduled slot for Division ${division}?`)) {
+        try {
+            const res = await fetch(`${API_BASE}/admin/saveSchedule`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day, time_slot: time, division, subject: '' }) // Empty subject clears the slot
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('slotEditorModal').style.display = 'none';
+                loadTimetableData();
+            }
+        } catch(err) {
+            console.error('Error clearing schedule slot:', err);
+        }
+    }
+};
+
+// Form submit handler for saving schedules
+const slotEditorForm = document.getElementById('slotEditorForm');
+if (slotEditorForm) {
+    slotEditorForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const day = document.getElementById('slotEditorDay').value;
+        const time = document.getElementById('slotEditorTime').value;
+        const division = document.getElementById('slotEditorDiv').value;
+        const subject = document.getElementById('slotEditorSubject').value;
+        const type = document.getElementById('slotEditorType').value;
+        const color = document.getElementById('slotEditorColor').value;
+        
+        try {
+            const res = await fetch(`${API_BASE}/admin/saveSchedule`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day, time_slot: time, division, subject, type, color })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('slotEditorModal').style.display = 'none';
+                loadTimetableData();
+            } else {
+                alert(`⚠️ Double Booking Clash!\n\n${data.message || 'Could not save slot due to schedule clashing.'}`);
+            }
+        } catch(err) {
+            console.error('Error saving schedule slot:', err);
+            alert('⚠️ Network error saving schedule slot.');
+        }
+    });
+}
+
+// Student Portal Timetable graphical rendering
+window.loadStudentTimetable = async function() {
+    try {
+        const user = getSavedUser();
+        if (!user || user.role !== 'student') return;
+        
+        const division = (user.division || '').toUpperCase().trim() || 'Q';
+        const label = document.getElementById('studentTimetableDivLabel');
+        if (label) label.innerText = `Division ${division}`;
+        
+        const res = await fetch(`${API_BASE}/admin/getSchedule?division=${division}`);
+        const data = await res.json();
+        
+        if (data.success) {
+            const tbody = document.getElementById('studentTimetableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            const slots = [
+                { label: '10:30 AM - 11:30 AM', time: '10:30-11:30', type: 'lecture' },
+                { label: '11:30 AM - 12:30 PM', time: '11:30-12:30', type: 'lecture' },
+                { label: '12:30 PM - 01:00 PM', time: '12:30-13:00', type: 'lunch' },
+                { label: '01:00 PM - 02:00 PM', time: '13:00-14:00', type: 'lecture' },
+                { label: '02:00 PM - 03:00 PM', time: '14:00-15:00', type: 'lecture' },
+                { label: '03:00 PM - 03:15 PM', time: '15:00-15:15', type: 'break' },
+                { label: '03:15 PM - 04:15 PM', time: '15:15-16:15', type: 'lecture' },
+                { label: '04:15 PM - 05:15 PM', time: '16:15-17:15', type: 'lecture' }
+            ];
+            
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            
+            slots.forEach(slot => {
+                const tr = document.createElement('tr');
+                tr.style.height = slot.type === 'lecture' ? '70px' : '30px';
+                
+                const tdTime = document.createElement('td');
+                tdTime.style.background = 'rgba(255, 255, 255, 0.03)';
+                tdTime.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+                tdTime.style.padding = '0.35rem';
+                tdTime.style.borderRadius = '4px';
+                tdTime.innerHTML = `<strong style="font-size: 0.75rem; color: #fda4af; display:block;">${slot.label.split(' - ')[0]}</strong><span style="font-size: 0.65rem; color: var(--text-muted);">${slot.label.split(' - ')[1]}</span>`;
+                tr.appendChild(tdTime);
+                
+                if (slot.type === 'lunch') {
+                    const tdBreak = document.createElement('td');
+                    tdBreak.setAttribute('colspan', '5');
+                    tdBreak.style.background = 'rgba(255,255,255,0.02)';
+                    tdBreak.style.border = '1px dashed rgba(255,255,255,0.1)';
+                    tdBreak.style.fontSize = '0.75rem';
+                    tdBreak.style.color = 'var(--text-muted)';
+                    tdBreak.innerText = '☕ LUNCH BREAK (12:30 - 1:00 PM)';
+                    tr.appendChild(tdBreak);
+                } else if (slot.type === 'break') {
+                    const tdBreak = document.createElement('td');
+                    tdBreak.setAttribute('colspan', '5');
+                    tdBreak.style.background = 'rgba(255,255,255,0.02)';
+                    tdBreak.style.border = '1px dashed rgba(255,255,255,0.1)';
+                    tdBreak.style.fontSize = '0.72rem';
+                    tdBreak.style.color = 'var(--text-muted)';
+                    tdBreak.innerText = '🍪 SHORT BREAK (3:00 - 3:15 PM)';
+                    tr.appendChild(tdBreak);
+                } else {
+                    days.forEach(day => {
+                        const td = document.createElement('td');
+                        td.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+                        td.style.borderRadius = '4px';
+                        td.style.background = 'rgba(255, 255, 255, 0.01)';
+                        td.style.padding = '4px';
+                        td.style.verticalAlign = 'middle';
+                        
+                        const matched = data.schedules.find(s => s.day === day && s.time_slot === slot.time);
+                        if (matched) {
+                            // In single division specific view, always distinguish by class session type!
+                            td.style.background = getScheduleGradient(matched.division, matched.type, 'SINGLE', matched.color);
+                            td.style.color = 'white';
+                            td.style.fontSize = '0.72rem';
+                            td.style.fontWeight = '600';
+                            td.style.textAlign = 'center';
+                            td.style.borderRadius = '4px';
+                            td.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                            td.innerHTML = `
+                                <div style="font-weight: 700;">${matched.subject.replace('Basic Electrical Engineering', 'BEE').replace('Computer Programming', 'Programming').replace('Engineering Graphics', 'Graphics')}</div>
+                                <div style="font-size: 0.62rem; opacity: 0.8; margin-top: 1px;">(${matched.type})</div>
+                            `;
+                        } else {
+                            td.innerHTML = '<span style="color: rgba(255,255,255,0.1); font-size: 0.65rem;">--</span>';
+                        }
+                        tr.appendChild(td);
+                    });
+                }
+                tbody.appendChild(tr);
+            });
+        }
+    } catch(err) {
+        console.error('Error loading student timetable:', err);
+    }
+};
+
+window.downloadStudentTimetable = function() {
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #studentPrintArea, #studentPrintArea * {
+                visibility: visible;
+            }
+            #studentPrintArea {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background: white !important;
+                color: black !important;
+                border: 1px solid #ccc !important;
+                padding: 1rem !important;
+            }
+            table th, table td {
+                color: black !important;
+                border: 1px solid #333 !important;
+            }
+            table td {
+                background: #f3f4f6 !important;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
+};
+
+// --- Advanced Features Code Integrations ---
+
+// Theme Toggler
+window.toggleTheme = function() {
+    if (document.body.classList.contains('light-theme')) {
+        document.body.classList.remove('light-theme');
+        localStorage.setItem('theme', 'dark');
+    } else {
+        document.body.classList.add('light-theme');
+        localStorage.setItem('theme', 'light');
+    }
+    window.location.reload();
+};
+
+function initTheme() {
+    const theme = localStorage.getItem('theme') || 'dark';
+    if (theme === 'light') {
+        document.body.classList.add('light-theme');
+    } else {
+        document.body.classList.remove('light-theme');
+    }
+}
+initTheme();
+
+// Web Push Notifications Registration
+async function setupPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push notifications are not supported in this browser.');
+        return;
+    }
+    
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (!subscription) {
+            const keyRes = await fetch(`${API_BASE}/push-vapid-key`);
+            const keyData = await keyRes.json();
+            if (!keyData.publicKey) return;
+            
+            const convertedVapidKey = urlBase64ToUint8Array(keyData.publicKey);
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: convertedVapidKey
+            });
+        }
+        
+        const user = getSavedUser();
+        if (user) {
+            await fetch(`${API_BASE}/push-subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subscription,
+                    enrollment_no: user.enrollment_no || null,
+                    username: user.username || null
+                })
+            });
+        }
+    } catch(err) {
+        console.warn('Push notification subscription setup failed:', err);
+    }
+}
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// Sockets Student Chat Join
+window.joinStudentChatRoom = function() {
+    let user = getSavedUser();
+    if (!user || typeof io === 'undefined') return;
+    
+    const division = user.division || 'A';
+    const chatDiv = document.getElementById('chatDivName');
+    if (chatDiv) chatDiv.innerText = division;
+    
+    const socket = io();
+    socket.emit('join_room', { division, name: user.name || 'Student', id: user.enrollment_no });
+    
+    const chatForm = document.getElementById('chatForm');
+    if (chatForm) {
+        chatForm.onsubmit = (e) => {
+            e.preventDefault();
+            const inp = document.getElementById('chatInput');
+            const msg = inp.value.trim();
+            if (msg) {
+                socket.emit('send_message', {
+                    division,
+                    sender_name: user.name || 'Student',
+                    sender_id: user.enrollment_no,
+                    message: msg
+                });
+                inp.value = '';
+            }
+        };
+    }
+    
+    socket.on('chat_history', (messages) => {
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+            if (messages.length === 0) {
+                chatMessages.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin-top: auto;">No messages yet. Say hello!</div>';
+            } else {
+                messages.forEach(m => appendChatMessage(m, user.enrollment_no));
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    });
+    
+    socket.on('receive_message', (m) => {
+        appendChatMessage(m, user.enrollment_no);
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+};
+
+// Dynamic Chat Divisions Load
+window.loadChatDivisions = async function() {
+    const select = document.getElementById('chatDivisionSelect');
+    if (!select) return;
+    
+    try {
+        const res = await fetch(`${API_BASE}/admin/divisions`);
+        const data = await res.json();
+        if (data.success && data.divisions && data.divisions.length > 0) {
+            select.innerHTML = data.divisions.map(div => 
+                `<option value="${div}">Division ${div}</option>`
+            ).join('');
+            
+            // Join room for the first division by default
+            joinAdminChatRoom();
+        } else {
+            select.innerHTML = '<option value="">No active divisions</option>';
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin-top: auto;">No divisions with active students exist.</div>';
+            }
+        }
+    } catch (err) {
+        console.error('Error loading chat divisions:', err);
+        select.innerHTML = '<option value="">Error loading divisions</option>';
+    }
+};
+
+// Sockets Admin Chat Join
+let adminSocket = null;
+window.joinAdminChatRoom = function() {
+    const divisionSelect = document.getElementById('chatDivisionSelect');
+    if (!divisionSelect) return;
+    const division = divisionSelect.value;
+    if (!division) return;
+    const user = getSavedUser();
+    if (!user || typeof io === 'undefined') return;
+    
+    if (adminSocket) {
+        adminSocket.disconnect();
+    }
+    
+    adminSocket = io();
+    adminSocket.emit('join_room', { division, name: user.name || 'Admin', id: user.username });
+    
+    const chatForm = document.getElementById('chatForm');
+    if (chatForm) {
+        chatForm.style.display = 'flex';
+        chatForm.onsubmit = (e) => {
+            e.preventDefault();
+            const inp = document.getElementById('chatInput');
+            const msg = inp.value.trim();
+            const sendEmailChecked = document.getElementById('chatSendEmail') ? document.getElementById('chatSendEmail').checked : false;
+            
+            if (msg) {
+                adminSocket.emit('send_message', {
+                    division,
+                    sender_name: `${user.name || 'Admin'} (${user.subject || 'Staff'})`,
+                    sender_id: user.username,
+                    message: msg,
+                    send_email: sendEmailChecked
+                });
+                if (document.getElementById('chatSendEmail')) {
+                    document.getElementById('chatSendEmail').checked = false;
+                }
+                inp.value = '';
+            }
+        };
+    }
+    
+    adminSocket.on('chat_history', (messages) => {
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+            if (messages.length === 0) {
+                chatMessages.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin-top: auto;">No messages yet. Say hello!</div>';
+            } else {
+                messages.forEach(m => appendChatMessage(m, user.username));
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    });
+    
+    adminSocket.on('receive_message', (m) => {
+        appendChatMessage(m, user.username);
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+};
+
+function appendChatMessage(msg, currentUserId) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    const isOutgoing = msg.sender_id === currentUserId;
+    
+    // Remove empty list visual helper if present
+    if (chatMessages.innerText.includes('No messages yet') || chatMessages.innerText.includes('Select a room')) {
+        chatMessages.innerHTML = '';
+    }
+    
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-message ${isOutgoing ? 'outgoing' : 'incoming'}`;
+    
+    const metaSpan = document.createElement('span');
+    metaSpan.className = 'meta';
+    metaSpan.innerText = isOutgoing ? 'You' : msg.sender_name;
+    
+    const textSpan = document.createElement('span');
+    textSpan.innerText = msg.message;
+    
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'time';
+    const date = new Date(msg.timestamp);
+    timeSpan.innerText = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    msgDiv.appendChild(metaSpan);
+    msgDiv.appendChild(textSpan);
+    msgDiv.appendChild(timeSpan);
+    chatMessages.appendChild(msgDiv);
+}
+
+// Assignment Grading Open Modal
+window.openGradingModal = function(assignmentId, title, enrollmentNo) {
+    document.getElementById('gradingModalAssignmentId').value = assignmentId;
+    document.getElementById('gradingModalTitle').innerText = `Grading: ${title} (Student: ${enrollmentNo})`;
+    document.getElementById('gradingModalGrade').value = '';
+    document.getElementById('gradingModalFeedback').value = '';
+    
+    const alertBox = document.getElementById('gradingModalAlert');
+    if (alertBox) {
+        alertBox.style.display = 'none';
+        alertBox.innerText = '';
+    }
+    document.getElementById('assignmentGradingModal').style.display = 'flex';
+};
+
+// Wire up Grading Form Submit
+const gradingForm = document.getElementById('assignmentGradingForm');
+if (gradingForm) {
+    gradingForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const alertBox = document.getElementById('gradingModalAlert');
+        const assignment_id = document.getElementById('gradingModalAssignmentId').value;
+        const grade = document.getElementById('gradingModalGrade').value.trim();
+        const feedback = document.getElementById('gradingModalFeedback').value.trim();
+        
+        const user = getSavedUser();
+        const graded_by = user ? (user.name || user.username) : 'Admin';
+        
+        try {
+            const res = await fetch(`${API_BASE}/admin/gradeAssignment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ assignment_id, grade, feedback, graded_by })
+            });
+            const data = await res.json();
+            alertBox.style.display = 'block';
+            if (data.success) {
+                alertBox.className = 'alert success';
+                alertBox.innerText = 'Grade submitted successfully!';
+                
+                // Refresh modal view
+                const enrollment_no = document.getElementById('modalMarksEnrollment').value;
+                if (enrollment_no) {
+                    openStudentModal(enrollment_no, document.getElementById('modalStudentName').innerText);
+                }
+                setTimeout(() => {
+                    document.getElementById('assignmentGradingModal').style.display = 'none';
+                }, 1000);
+            } else {
+                alertBox.className = 'alert error';
+                alertBox.innerText = data.message || 'Failed to submit grade.';
+            }
+        } catch (err) {
+            console.error('Grading submit error:', err);
+            alertBox.style.display = 'block';
+            alertBox.className = 'alert error';
+            alertBox.innerText = 'Server error submitting grade.';
+        }
+    };
+}
+
+// Tag Filtering Search Functions
+window.filterMaterials = function() {
+    const query = document.getElementById('filesSearchInput').value.toLowerCase().trim();
+    const items = document.querySelectorAll('#filesContainer .file-item');
+    items.forEach(el => {
+        const name = el.getAttribute('data-name') || '';
+        const tags = el.getAttribute('data-tags') || '';
+        if (name.toLowerCase().includes(query) || tags.toLowerCase().includes(query)) {
+            el.style.display = 'flex';
+        } else {
+            el.style.display = 'none';
+        }
+    });
+};
+
+window.filterAdminMaterials = function() {
+    const query = document.getElementById('adminFilesSearchInput').value.toLowerCase().trim();
+    const items = document.querySelectorAll('#adminFilesContainer .file-item');
+    items.forEach(el => {
+        const name = el.getAttribute('data-name') || '';
+        const tags = el.getAttribute('data-tags') || '';
+        if (name.toLowerCase().includes(query) || tags.toLowerCase().includes(query)) {
+            el.style.display = 'flex';
+        } else {
+            el.style.display = 'none';
+        }
+    });
+};
+
