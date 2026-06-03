@@ -6,15 +6,19 @@ EduSync is a comprehensive, PWA-enabled College Records Management System design
 
 ### For Students
 * **Progress Dashboard**: View latest marks, attendance, and academic status.
-* **Announcements**: Receive and view broadcasted announcements filtered by division.
+* **Discussion Hub**: Participate in real-time chat rooms filtered by division.
+* **Push Notifications**: Receive real-time browser alerts/announcements from administration.
+* **Face Recognition Login**: Securely log in using facial recognition.
 * **Assignment Submission**: Securely upload assignment files directly to the administration.
-* **PWA & Offline Support**: Install EduSync on your device for quick access, and view cached data even when offline.
+* **PWA & Offline Support**: Install EduSync on your device for quick access, and view cached data or queue offline sync operations when offline.
 * **Password Recovery**: Easily reset forgotten passwords via automated email recovery.
 
 ### For Administrators
 * **Centralized Dashboard**: Manage student records efficiently.
+* **Discussion Announcements**: Post real-time class announcements with options to email students.
+* **Push Notifications Broadcast**: Trigger browser notifications to students or users.
+* **Face Verification Registration**: Set up facial recognition data for students.
 * **Bulk Data Upload**: Upload student marks and details using Excel or PDF parsing.
-* **Broadcast Announcements**: Send critical announcements dynamically filtered by active student divisions.
 * **Assignment Management**: View and download assignments submitted by students.
 * **Student Directory**: Add, edit, or archive student profiles easily.
 
@@ -44,7 +48,7 @@ npm install
 ```
 
 ### 3. Environment Variables
-To enable the email recovery and notification features, create a `.env` file inside the `backend` directory (or move the one from the root folder) and add your email credentials:
+To enable the email recovery and notification features, create a `.env` file inside the `backend` directory and add your credentials:
 ```env
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_app_password
@@ -52,7 +56,7 @@ EMAIL_PASS=your_app_password
 *(Note: If using Gmail, you will need to generate an "App Password" from your Google Account settings).*
 
 ### 4. Start up the Server
-From inside the `backend` directory, start the Express server:
+From inside the `backend` directory, start the server:
 ```bash
 npm start
 ```
@@ -65,14 +69,18 @@ Open your web browser and navigate to:
 ```
 http://localhost:3000
 ```
-Default Administrator accounts are automatically created on first run:
-* **Username**: `admin` | **Password**: `admin123`
-* **Username**: `admin2` | **Password**: `admin456`
+Default Administrator accounts are automatically created on first run (each assigned to a specific subject):
+* **Physics**: Username: `admin` | Password: `admin123`
+* **Maths**: Username: `admin2` | Password: `admin456`
+* **Basic Electrical Engineering**: Username: `admin3` | Password: `admin789`
+* **Mechanics**: Username: `admin4` | Password: `admin123`
+* **Computer Programming**: Username: `admin5` | Password: `admin123`
+* **Engineering Graphics**: Username: `admin6` | Password: `admin123`
 
 ---
 
 ## 🛠️ Tech Stack
-* **Frontend**: HTML5, CSS3, Vanilla JavaScript, PWA (Service Workers, Manifest)
-* **Backend**: Node.js, Express.js
+* **Frontend**: HTML5, CSS3, Vanilla JavaScript, Face-API.js, PWA (Service Workers, Manifest)
+* **Backend**: Node.js, Express.js, Socket.io (Real-time Communications), Web-Push (Push Notifications)
 * **Database**: MySQL
 * **Key Libraries**: `multer` (file uploads), `xlsx` & `pdf-parse` (data extraction), `nodemailer` (email services)
