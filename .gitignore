@@ -3,3 +3,4 @@ uploads/
 *.log
 .env
 pdf_text_output.txt
+backend/vapid-keys.json
